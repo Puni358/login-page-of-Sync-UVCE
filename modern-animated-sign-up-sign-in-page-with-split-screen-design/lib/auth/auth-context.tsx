@@ -14,6 +14,7 @@ import type { AuthUser, LoginInput, SignUpInput } from "./types"
 import { resolveAuthUser } from "./profile-service"
 import {
   getSessionAuthUser,
+  isSigningUp,
   performGoogleSignIn,
   performLogin,
   performLogout,
@@ -28,7 +29,7 @@ interface AuthContextValue {
   isApproved: boolean
   isPending: boolean
   isAdmin: boolean
-  login: (input: LoginInput) => Promise<{ success: boolean; error?: string; isPending?: boolean }>
+  login: (input: LoginInput) => Promise<{ success: boolean; error?: string; isPending?: boolean; noAccountFound?: boolean }>
   signUp: (input: SignUpInput) => Promise<{ success: boolean; error?: string; isPending?: boolean }>
   signInWithGoogle: () => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
@@ -66,10 +67,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!mounted) return
 
+      if (isSigningUp()) {
+        console.log("[AuthCheck - onAuthStateChange] Skipping profile check because sign up is currently in progress.")
+        return
+      }
+
       if (session?.user) {
         try {
           const authUser = await resolveAuthUser(session.user)
-          setUser(authUser)
+          if (!authUser) {
+            console.log("[AuthCheck - onAuthStateChange] Profile check ran for user:", session.user.id, "Found profile: false -> Signing out.")
+            await supabase.auth.signOut()
+            setUser(null)
+          } else {
+            console.log("[AuthCheck - onAuthStateChange] Profile check ran for user:", session.user.id, "Found profile: true.")
+            setUser(authUser)
+          }
         } catch {
           setUser(null)
         }
@@ -92,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(result.user)
       return { success: true, isPending: result.user.approvalStatus === "pending" }
     }
-    return { success: false, error: result.error ?? "Login failed" }
+    return { success: false, error: result.error ?? "Login failed", noAccountFound: result.noAccountFound }
   }, [])
 
   const signUp = useCallback(async (input: SignUpInput) => {

@@ -1,23 +1,40 @@
 import { supabase } from "@/lib/supabaseClient"
 import type { AuthUser, LoginInput, SignUpInput } from "./types"
-import { mapToAuthUser, resolveAuthUser } from "./profile-service"
+import { fetchProfile, mapToAuthUser, resolveAuthUser } from "./profile-service"
 import {
   clearRememberToken,
   writeRememberToken,
 } from "./remember-me"
 
+let isSigningUpInProcess = false
+
+export function isSigningUp(): boolean {
+  return isSigningUpInProcess
+}
+
 export async function getSessionAuthUser(): Promise<AuthUser | null> {
+  if (isSigningUpInProcess) {
+    console.log("[AuthCheck - getSession] Skipping profile check because sign up is in progress.")
+    return null
+  }
+
   const {
     data: { session },
   } = await supabase.auth.getSession()
 
   if (!session?.user) return null
-  return resolveAuthUser(session.user)
+  const authUser = await resolveAuthUser(session.user)
+  if (!authUser) {
+    console.log("[AuthCheck - getSession] Profile doesn't exist for session user:", session.user.id, "Signing out.")
+    await supabase.auth.signOut()
+    return null
+  }
+  return authUser
 }
 
 export async function performLogin(
   input: LoginInput
-): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+): Promise<{ success: boolean; user?: AuthUser; error?: string; noAccountFound?: boolean }> {
   if (typeof window !== "undefined") {
     if (input.rememberMe) {
       localStorage.setItem("sync_remember_me_active", "true")
@@ -34,7 +51,20 @@ export async function performLogin(
   if (error) return { success: false, error: error.message }
   if (!data.user) return { success: false, error: "Login failed" }
 
-  const user = await resolveAuthUser(data.user)
+  const profile = await fetchProfile(data.user.id, data.user.email)
+  console.log("[AuthCheck - Sign In] Profile check ran for user:", data.user.id, "Profile exists:", !!profile)
+
+  if (!profile) {
+    console.log("[AuthCheck - Sign In] Profile doesn't exist for user:", data.user.id, "Signing out and blocking access.")
+    await supabase.auth.signOut()
+    return {
+      success: false,
+      error: "No account found for this email — please sign up first",
+      noAccountFound: true,
+    }
+  }
+
+  const user = mapToAuthUser(data.user, profile)
 
   if (input.rememberMe) {
     writeRememberToken({
@@ -53,49 +83,55 @@ export async function performLogin(
 export async function performSignUp(
   input: SignUpInput
 ): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
-  const trimmedUsn = input.usn.trim().toUpperCase()
-  const trimmedPhone = input.phone.trim()
-  const trimmedEmail = input.email.trim()
-  const fullName = `${input.firstName.trim()} ${input.lastName.trim()}`.trim()
+  isSigningUpInProcess = true
 
-  const { data, error } = await supabase.auth.signUp({
-    email: trimmedEmail,
-    password: input.password,
-  })
+  try {
+    const trimmedUsn = input.usn.trim().toUpperCase()
+    const trimmedPhone = input.phone.trim()
+    const trimmedEmail = input.email.trim()
+    const fullName = `${input.firstName.trim()} ${input.lastName.trim()}`.trim()
 
-  if (error) return { success: false, error: error.message }
-  if (!data.user) return { success: false, error: "Sign up failed" }
+    const { data, error } = await supabase.auth.signUp({
+      email: trimmedEmail,
+      password: input.password,
+    })
 
-  const { error: profileError } = await supabase.from("profiles").insert({
-    id: data.user.id,
-    email: trimmedEmail,
-    usn: trimmedUsn,
-    phone_number: trimmedPhone,
-    full_name: fullName,
-    status: "pending",
-  })
+    if (error) return { success: false, error: error.message }
+    if (!data.user) return { success: false, error: "Sign up failed" }
 
-  if (profileError) {
-    return { success: false, error: profileError.message }
-  }
+    console.log("[SignUp] Right before inserting profile row for user:", data.user.id, "email:", trimmedEmail)
 
-  if (!data.session) {
-    return {
-      success: true,
-      user: mapToAuthUser(data.user, {
-        id: data.user.id,
-        email: trimmedEmail,
-        usn: trimmedUsn,
-        phone_number: trimmedPhone,
-        full_name: fullName,
-        status: "pending",
-        is_admin: false,
-      }),
+    const { error: profileError } = await supabase.from("profiles").insert({
+      id: data.user.id,
+      email: trimmedEmail,
+      usn: trimmedUsn,
+      phone_number: trimmedPhone,
+      full_name: fullName,
+      status: "pending",
+    })
+
+    if (profileError) {
+      console.error("[SignUp] Profile insert failed for user:", data.user.id, "error:", profileError.message)
+      return { success: false, error: profileError.message }
     }
-  }
 
-  const user = await resolveAuthUser(data.user)
-  return { success: true, user }
+    console.log("[SignUp] Profile row successfully inserted for user:", data.user.id)
+
+    const createdProfile = {
+      id: data.user.id,
+      email: trimmedEmail,
+      usn: trimmedUsn,
+      phone_number: trimmedPhone,
+      full_name: fullName,
+      status: "pending" as const,
+      is_admin: false,
+    }
+
+    const user = mapToAuthUser(data.user, createdProfile)
+    return { success: true, user }
+  } finally {
+    isSigningUpInProcess = false
+  }
 }
 
 export async function performGoogleSignIn(): Promise<{ success: boolean; error?: string }> {
@@ -131,6 +167,7 @@ export async function updateUserPhone(userId: string, phone: string): Promise<vo
 export async function handleAuthCallback(): Promise<{
   user: AuthUser | null
   error?: string
+  noAccountFound?: boolean
 }> {
   const params = new URLSearchParams(window.location.search)
   const code = params.get("code")
@@ -148,6 +185,19 @@ export async function handleAuthCallback(): Promise<{
   if (sessionError) return { user: null, error: sessionError.message }
   if (!session?.user) return { user: null, error: "No active session" }
 
-  const user = await resolveAuthUser(session.user)
+  const profile = await fetchProfile(session.user.id, session.user.email)
+  console.log("[AuthCheck - OAuth Callback] Profile check ran for user:", session.user.id, "Profile exists:", !!profile)
+
+  if (!profile) {
+    console.log("[AuthCheck - OAuth Callback] Profile doesn't exist for user:", session.user.id, "Signing out and blocking access.")
+    await supabase.auth.signOut()
+    return {
+      user: null,
+      error: "No account found for this email — please sign up first",
+      noAccountFound: true,
+    }
+  }
+
+  const user = mapToAuthUser(session.user, profile)
   return { user }
 }

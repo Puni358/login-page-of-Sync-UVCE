@@ -14,8 +14,10 @@ export default function AuthCallbackPage() {
       const result = await handleAuthCallback()
 
       if (result.error || !result.user) {
-        setError(result.error ?? "Authentication failed")
-        setTimeout(() => router.replace("/?mode=login"), 2500)
+        const errMsg = result.error ?? "No account found for this email — please sign up first"
+        setError(errMsg)
+        const redirectUrl = `/?mode=signup&error=${encodeURIComponent(errMsg)}`
+        setTimeout(() => router.replace(redirectUrl), 1800)
         return
       }
 
@@ -31,8 +33,8 @@ export default function AuthCallbackPage() {
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#1a1a24] px-4">
       {error ? (
         <>
-          <p className="text-center text-sm text-red-400/90">{error}</p>
-          <p className="text-center text-xs text-white/40">Redirecting to login…</p>
+          <p className="text-center text-sm font-medium text-red-400/90">{error}</p>
+          <p className="text-center text-xs text-white/40">Redirecting to Sign Up…</p>
         </>
       ) : (
         <>

@@ -210,8 +210,18 @@ function AuthPageContent() {
   }, [])
 
   useEffect(() => {
-    if (initialMode === "login") setIsSignUp(false)
-  }, [initialMode])
+    if (initialMode === "login") {
+      setIsSignUp(false)
+    } else if (initialMode === "signup") {
+      setIsSignUp(true)
+    }
+
+    const errorParam = searchParams.get("error")
+    if (errorParam) {
+      setIsSignUp(true)
+      setErrors((prev) => ({ ...prev, email: errorParam }))
+    }
+  }, [initialMode, searchParams])
 
   useEffect(() => {
     if (isCarouselPaused) return
@@ -263,7 +273,13 @@ function AuthPageContent() {
         }, 800)
       } else {
         setButtonState("default")
-        setErrors({ email: result.error ?? "Login failed" })
+        const errMsg = result.error ?? "Login failed"
+        setErrors({ email: errMsg })
+        if (result.noAccountFound || errMsg.includes("No account found")) {
+          setTimeout(() => {
+            setIsSignUp(true)
+          }, 1200)
+        }
       }
       return
     }
