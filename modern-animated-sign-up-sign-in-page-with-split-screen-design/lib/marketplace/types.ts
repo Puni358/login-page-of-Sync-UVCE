@@ -22,6 +22,7 @@ export interface Product {
   createdAt: string
   category?: ProductCategory
   condition?: ProductCondition
+  status?: string
 }
 
 export interface CreateProductInput {

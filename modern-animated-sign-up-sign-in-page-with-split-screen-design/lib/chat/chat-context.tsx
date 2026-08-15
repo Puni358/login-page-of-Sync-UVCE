@@ -13,6 +13,8 @@ import { useAuth } from "@/lib/auth/auth-context"
 import { supabase } from "@/lib/supabaseClient"
 import type { ChatConversation, OpenChatParams } from "./types"
 import {
+  deleteConversationFromSupabase,
+  deleteMessageFromSupabase,
   fetchTotalUnreadCountFromSupabase,
   fetchUserConversations,
   getOrCreateConversationInSupabase,
@@ -35,6 +37,8 @@ interface ChatContextValue {
   backToList: () => void
   selectConversation: (id: string) => Promise<void>
   sendMessage: (body: string) => Promise<void>
+  deleteMessage: (messageId: string) => Promise<boolean>
+  deleteConversation: (conversationId: string) => Promise<boolean>
   refresh: () => Promise<void>
 }
 
@@ -76,18 +80,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     refresh()
   }, [refresh])
 
-  // Supabase Realtime subscriptions on messages table
+  // Supabase Realtime subscriptions on messages and conversations tables
   useEffect(() => {
     if (!currentUserId) return
 
     const channel = supabase
-      .channel(`realtime_messages_${currentUserId}`)
+      .channel(`realtime_chat_${currentUserId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "messages",
+        },
+        () => {
+          refresh()
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversations",
         },
         () => {
           refresh()
@@ -120,9 +135,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
       setIsLoading(true)
       try {
-        console.log("[ChatContext] Awaiting getOrCreateConversationInSupabase for item:", params.itemId)
         const conv = await getOrCreateConversationInSupabase(currentUserId, params)
-        console.log("[ChatContext] getOrCreateConversationInSupabase returned conversation:", conv)
 
         if (conv && conv.id) {
           await markSupabaseConversationRead(conv.id, currentUserId)
@@ -167,26 +180,40 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const sendMessage = useCallback(
     async (body: string) => {
-      if (!activeId || !currentUserId || !body.trim()) {
-        console.error("[ChatContext] sendMessage missing activeId or currentUserId:", {
-          activeId,
-          currentUserId,
-          hasBody: Boolean(body?.trim()),
-        })
-        return
-      }
-
-      console.log(
-        "[ChatContext] Calling sendMessageToSupabase with confirmed conversation ID:",
-        activeId
-      )
+      if (!activeId || !currentUserId || !body.trim()) return
 
       const newMsg = await sendMessageToSupabase(activeId, currentUserId, body)
       if (newMsg) {
         await refresh()
-      } else {
-        console.error("[ChatContext] sendMessageToSupabase returned null.")
       }
+    },
+    [activeId, currentUserId, refresh]
+  )
+
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      if (!currentUserId || !messageId) return false
+      const success = await deleteMessageFromSupabase(messageId, currentUserId)
+      if (success) {
+        await refresh()
+      }
+      return success
+    },
+    [currentUserId, refresh]
+  )
+
+  const deleteConversation = useCallback(
+    async (conversationId: string) => {
+      if (!currentUserId || !conversationId) return false
+      const success = await deleteConversationFromSupabase(conversationId, currentUserId)
+      if (success) {
+        if (activeId === conversationId) {
+          setActiveId(null)
+          setView("list")
+        }
+        await refresh()
+      }
+      return success
     },
     [activeId, currentUserId, refresh]
   )
@@ -205,6 +232,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       backToList,
       selectConversation,
       sendMessage,
+      deleteMessage,
+      deleteConversation,
       refresh,
     }),
     [
@@ -221,6 +250,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       backToList,
       selectConversation,
       sendMessage,
+      deleteMessage,
+      deleteConversation,
       refresh,
     ]
   )

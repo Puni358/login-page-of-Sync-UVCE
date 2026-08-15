@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { ArrowLeft, CheckCheck, Send } from "lucide-react"
+import { AlertTriangle, ArrowLeft, CheckCheck, Send, Trash2 } from "lucide-react"
+import { useChat } from "@/lib/chat/chat-context"
 import type { ChatConversation } from "@/lib/chat/types"
 import { fetchProfile } from "@/lib/auth/profile-service"
 import { cn } from "@/lib/utils"
@@ -22,9 +23,17 @@ function getItemTypeLabel(type?: string): string {
 }
 
 export function ChatWindow({ conversation, onBack, onSend }: ChatWindowProps) {
+  const { deleteMessage, deleteConversation } = useChat()
+
   const [draft, setDraft] = useState("")
   const [error, setError] = useState("")
   const [otherPartyFullName, setOtherPartyFullName] = useState<string | null>(null)
+  
+  // Deletion modals state
+  const [msgToDelete, setMsgToDelete] = useState<string | null>(null)
+  const [showClearConvModal, setShowClearConvModal] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -67,11 +76,36 @@ export function ChatWindow({ conversation, onBack, onSend }: ChatWindowProps) {
     setDraft("")
   }
 
+  const handleDeleteMsg = async () => {
+    if (!msgToDelete) return
+    setIsDeleting(true)
+    try {
+      await deleteMessage(msgToDelete)
+    } catch (err) {
+      console.error("Failed to delete message:", err)
+    } finally {
+      setIsDeleting(false)
+      setMsgToDelete(null)
+    }
+  }
+
+  const handleClearConversation = async () => {
+    setIsDeleting(true)
+    try {
+      await deleteConversation(conversation.id)
+    } catch (err) {
+      console.error("Failed to clear conversation:", err)
+    } finally {
+      setIsDeleting(false)
+      setShowClearConvModal(false)
+    }
+  }
+
   // Find the last message sent by current user
   const lastOwnMessage = [...conversation.messages].reverse().find((m) => m.isOwn)
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-[#12121a]">
+    <div className="relative flex flex-1 flex-col overflow-hidden bg-[#12121a]">
       {/* Chat Window Header */}
       <div className="flex items-center gap-3 border-b border-white/5 px-4 py-3 bg-[#161622]">
         <button
@@ -89,6 +123,17 @@ export function ChatWindow({ conversation, onBack, onSend }: ChatWindowProps) {
           <p className="truncate text-sm font-semibold text-white">{headerTitle}</p>
           <p className="truncate text-xs font-medium text-purple-400/90">{headerSubtitle}</p>
         </div>
+
+        {/* Clear Conversation Trash Button */}
+        <button
+          type="button"
+          onClick={() => setShowClearConvModal(true)}
+          className="rounded-lg p-1.5 text-white/40 transition-colors hover:bg-red-500/10 hover:text-red-400"
+          title="Clear conversation"
+          aria-label="Clear conversation"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Messages Thread */}
@@ -105,31 +150,49 @@ export function ChatWindow({ conversation, onBack, onSend }: ChatWindowProps) {
             return (
               <div
                 key={msg.id}
-                className={cn("flex flex-col", msg.isOwn ? "items-end" : "items-start")}
+                className={cn("flex flex-col group/msg", msg.isOwn ? "items-end" : "items-start")}
               >
                 <div
                   className={cn(
-                    "max-w-[82%] rounded-2xl px-4 py-2.5 text-sm shadow-md transition-all",
-                    // Sender's own messages align RIGHT with vibrant gradient bubble
-                    msg.isOwn
-                      ? "rounded-br-xs bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
-                      : // Other participant's messages align LEFT with sleek dark contrast bubble
-                        "rounded-bl-xs bg-[#1f1f2e] text-white/90 border border-white/10"
+                    "relative flex items-center gap-1.5 max-w-[85%]",
+                    msg.isOwn ? "flex-row" : "flex-row-reverse"
                   )}
                 >
-                  <p className="leading-relaxed whitespace-pre-wrap">{msg.body}</p>
+                  {/* Delete message for me button */}
+                  <button
+                    type="button"
+                    onClick={() => setMsgToDelete(msg.id)}
+                    className="opacity-0 group-hover/msg:opacity-100 p-1 text-white/30 hover:text-red-400 transition-all rounded shrink-0"
+                    title="Delete message"
+                    aria-label="Delete message"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+
                   <div
                     className={cn(
-                      "mt-1.5 flex items-center justify-end gap-1 text-[10px]",
-                      msg.isOwn ? "text-purple-200/70" : "text-white/40"
+                      "rounded-2xl px-4 py-2.5 text-sm shadow-md transition-all flex-1",
+                      // Sender's own messages align RIGHT with vibrant gradient bubble
+                      msg.isOwn
+                        ? "rounded-br-xs bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
+                        : // Other participant's messages align LEFT with sleek dark contrast bubble
+                          "rounded-bl-xs bg-[#1f1f2e] text-white/90 border border-white/10"
                     )}
                   >
-                    <span>
-                      {new Date(msg.createdAt).toLocaleTimeString("en-IN", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
+                    <p className="leading-relaxed whitespace-pre-wrap">{msg.body}</p>
+                    <div
+                      className={cn(
+                        "mt-1.5 flex items-center justify-end gap-1 text-[10px]",
+                        msg.isOwn ? "text-purple-200/70" : "text-white/40"
+                      )}
+                    >
+                      <span>
+                        {new Date(msg.createdAt).toLocaleTimeString("en-IN", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -170,6 +233,72 @@ export function ChatWindow({ conversation, onBack, onSend }: ChatWindowProps) {
           </button>
         </div>
       </form>
+
+      {/* Confirmation Modal for Individual Message Delete */}
+      {msgToDelete && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
+          <div className="w-full max-w-xs rounded-2xl bg-[#161622] border border-white/10 p-5 shadow-2xl text-center animate-in fade-in zoom-in-95 duration-150">
+            <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10 text-red-400">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <h3 className="text-sm font-semibold text-white">Delete Message?</h3>
+            <p className="mt-1.5 text-xs text-white/60 leading-relaxed">
+              Delete this message?
+            </p>
+            <div className="mt-5 flex gap-2 justify-center">
+              <button
+                type="button"
+                onClick={() => setMsgToDelete(null)}
+                disabled={isDeleting}
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-white/80 hover:bg-white/10 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteMsg}
+                disabled={isDeleting}
+                className="rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-500 shadow-lg shadow-red-600/30 transition-colors disabled:opacity-50"
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Clearing Conversation */}
+      {showClearConvModal && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
+          <div className="w-full max-w-xs rounded-2xl bg-[#161622] border border-white/10 p-5 shadow-2xl text-center animate-in fade-in zoom-in-95 duration-150">
+            <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-red-500/10 text-red-400">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <h3 className="text-sm font-semibold text-white">Clear Conversation?</h3>
+            <p className="mt-1.5 text-xs text-white/60 leading-relaxed">
+              Clear this conversation? This will remove it from your inbox only — the other person will still see it. This cannot be undone.
+            </p>
+            <div className="mt-5 flex gap-2 justify-center">
+              <button
+                type="button"
+                onClick={() => setShowClearConvModal(false)}
+                disabled={isDeleting}
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-white/80 hover:bg-white/10 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleClearConversation}
+                disabled={isDeleting}
+                className="rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-500 shadow-lg shadow-red-600/30 transition-colors disabled:opacity-50"
+              >
+                {isDeleting ? "Deleting..." : "Clear"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -59,6 +59,7 @@ function mapItemToLostFound(row: ItemRow): LostFoundItem {
     listerEmail: profile?.email ?? "",
     listerPhone: profile?.phone_number ?? "",
     createdAt: row.created_at,
+    status: row.status ?? "active",
   }
 }
 

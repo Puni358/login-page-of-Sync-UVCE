@@ -53,7 +53,22 @@ function mapItemToProduct(row: ItemRow): Product {
     sellerEmail: profile?.email ?? "",
     sellerPhone: profile?.phone_number ?? "",
     createdAt: row.created_at,
+    status: row.status ?? "active",
   }
+}
+
+export async function updateItemStatus(itemId: string, status: "active" | "sold" | "resolved"): Promise<boolean> {
+  const { error } = await supabase
+    .from("items")
+    .update({ status })
+    .eq("id", itemId)
+
+  if (error) {
+    console.error("Failed to update item status:", error.message)
+    return false
+  }
+
+  return true
 }
 
 function applyClientFilters(products: Product[], filters?: ProductFilters): Product[] {

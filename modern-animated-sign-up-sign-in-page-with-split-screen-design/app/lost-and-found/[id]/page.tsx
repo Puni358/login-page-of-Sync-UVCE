@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, Calendar, MapPin, Tag, Trash2, Loader2 } from "lucide-react"
+import { ArrowLeft, Calendar, CheckCircle2, MapPin, Tag, Trash2, Loader2 } from "lucide-react"
 import { ListerContactPanel } from "@/components/lost-and-found/lister-contact-panel"
 import { ChatButton } from "@/components/chat/chat-button"
 import { getLostFoundItemById, deleteLostFoundItem } from "@/lib/lost-and-found/found-item-service"
+import { updateItemStatus } from "@/lib/marketplace/product-service"
 import type { LostFoundItem } from "@/lib/lost-and-found/types"
 import { useAuth } from "@/lib/auth/auth-context"
 import { cn } from "@/lib/utils"
@@ -14,11 +15,12 @@ import { cn } from "@/lib/utils"
 export default function LostFoundItemDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, isAdmin } = useAuth()
   const [item, setItem] = useState<LostFoundItem | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activePhoto, setActivePhoto] = useState(0)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
   const itemId = params.id as string
@@ -29,8 +31,7 @@ export default function LostFoundItemDetailPage() {
   }, [itemId])
 
   const isOwner = user?.id === item?.listerId
-  const isAdmin = user?.role === "admin"
-  const canDelete = isOwner || isAdmin
+  const canManage = isOwner || isAdmin
 
   const handleDelete = async () => {
     if (!item) return
@@ -43,6 +44,25 @@ export default function LostFoundItemDetailPage() {
       alert("Failed to delete listing. Please try again.")
       setIsDeleting(false)
       setShowConfirm(false)
+    }
+  }
+
+  const handleToggleResolvedStatus = async () => {
+    if (!item) return
+    const newStatus = item.status === "resolved" ? "active" : "resolved"
+    setIsUpdatingStatus(true)
+    try {
+      const success = await updateItemStatus(item.id, newStatus)
+      if (success) {
+        setItem((prev) => (prev ? { ...prev, status: newStatus } : null))
+      } else {
+        alert("Failed to update status. Please try again.")
+      }
+    } catch (err) {
+      console.error("Error updating status:", err)
+      alert("Error updating status.")
+    } finally {
+      setIsUpdatingStatus(false)
     }
   }
 
@@ -62,6 +82,7 @@ export default function LostFoundItemDetailPage() {
   }
 
   const isLost = item.type === "lost"
+  const isResolved = item.status === "resolved"
   const formattedDate = item.createdAt
     ? new Date(item.createdAt).toLocaleDateString(undefined, {
         weekday: "long",
@@ -73,13 +94,32 @@ export default function LostFoundItemDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href="/lost-and-found" className="inline-flex items-center gap-2 text-sm text-white/50 hover:text-white">
           <ArrowLeft className="h-4 w-4" /> Back to Lost &amp; Found
         </Link>
 
-        {canDelete && (
-          <div>
+        {canManage && (
+          <div className="flex items-center gap-2">
+            {/* Mark as Resolved button */}
+            <button
+              type="button"
+              onClick={handleToggleResolvedStatus}
+              disabled={isUpdatingStatus}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-all disabled:opacity-50 ${
+                isResolved
+                  ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
+                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+              }`}
+            >
+              {isUpdatingStatus ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+              )}
+              {isResolved ? "Marked as Resolved (Undo)" : "Mark as Resolved"}
+            </button>
+
             {showConfirm ? (
               <div className="flex items-center gap-2 rounded-xl bg-[#12121a] p-2 border border-white/10">
                 <span className="text-xs text-white/70">Delete item?</span>
@@ -118,7 +158,11 @@ export default function LostFoundItemDetailPage() {
           <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-white/5 bg-[#1a1a26]">
             {item.photos.length > 0 ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={item.photos[activePhoto]} alt={item.title} className="h-full w-full object-cover" />
+              <img
+                src={item.photos[activePhoto]}
+                alt={item.title}
+                className={cn("h-full w-full object-cover", isResolved && "grayscale-[20%]")}
+              />
             ) : (
               <div className="flex h-full items-center justify-center text-white/30">No photo</div>
             )}
@@ -132,6 +176,13 @@ export default function LostFoundItemDetailPage() {
             >
               {isLost ? "Lost Item" : "Found Item"}
             </div>
+
+            {isResolved && (
+              <div className="absolute right-4 top-4 inline-flex items-center gap-1.5 rounded-xl bg-emerald-600/90 px-3 py-1.5 text-xs font-bold text-white shadow-xl backdrop-blur-md border border-emerald-400/40">
+                <CheckCircle2 className="h-4 w-4 text-emerald-200" />
+                <span>✓ Resolved</span>
+              </div>
+            )}
           </div>
           {item.photos.length > 1 && (
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -155,7 +206,7 @@ export default function LostFoundItemDetailPage() {
 
         <div className="space-y-6">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span
                 className={cn(
                   "rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide",
@@ -168,6 +219,11 @@ export default function LostFoundItemDetailPage() {
                 <span className="flex items-center gap-1 rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-white/60">
                   <Tag className="h-3 w-3" />
                   <span className="capitalize">{item.category.replace(/-/g, " ")}</span>
+                </span>
+              )}
+              {isResolved && (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/20 px-2.5 py-1 text-xs font-bold text-emerald-400 border border-emerald-500/30">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> ✓ Resolved
                 </span>
               )}
             </div>

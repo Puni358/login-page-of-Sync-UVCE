@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LogIn, LogOut, MessageCircle } from "lucide-react"
+import { LogIn, LogOut, MessageCircle, Shield } from "lucide-react"
 import { useAuth } from "@/lib/auth/auth-context"
 import { useChat } from "@/lib/chat/chat-context"
 import { cn } from "@/lib/utils"
@@ -14,7 +14,7 @@ const NAV_ITEMS = [
 ] as const
 
 export function AppHeader() {
-  const { user, isAuthenticated, logout } = useAuth()
+  const { user, isAuthenticated, isAdmin, logout } = useAuth()
   const { unreadCount, openInbox } = useChat()
   const pathname = usePathname()
 
@@ -51,6 +51,22 @@ export function AppHeader() {
                 {item.label}
               </Link>
             ))}
+
+            {/* Admin Dashboard Link - Visible ONLY if user.is_admin === true */}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-all sm:text-sm",
+                  isActive("/admin")
+                    ? "bg-purple-600 text-white shadow-lg shadow-purple-600/30"
+                    : "border border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 hover:text-white"
+                )}
+              >
+                <Shield className="h-3.5 w-3.5 text-purple-400" />
+                Admin
+              </Link>
+            )}
           </nav>
 
           <div className="flex items-center gap-2 sm:gap-3 lg:shrink-0">

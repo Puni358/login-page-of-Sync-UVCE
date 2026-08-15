@@ -11,6 +11,8 @@ export async function fetchUserConversations(currentUserId: string): Promise<Cha
       item_id,
       buyer_id,
       seller_id,
+      deleted_by_buyer,
+      deleted_by_seller,
       created_at,
       items ( id, title, type ),
       buyer:profiles!buyer_id ( id, full_name ),
@@ -32,8 +34,16 @@ export async function fetchUserConversations(currentUserId: string): Promise<Cha
 
   if (!convRows || convRows.length === 0) return []
 
+  // Filter out conversations that current user soft deleted
+  const activeConvRows = convRows.filter((conv: any) => {
+    const isBuyer = conv.buyer_id === currentUserId
+    if (isBuyer && conv.deleted_by_buyer === true) return false
+    if (!isBuyer && conv.deleted_by_seller === true) return false
+    return true
+  })
+
   const result: ChatConversation[] = await Promise.all(
-    convRows.map(async (conv: any) => {
+    activeConvRows.map(async (conv: any) => {
       const isBuyer = conv.buyer_id === currentUserId
       const otherPartyProfile = isBuyer ? conv.seller : conv.buyer
       const otherPartyId = isBuyer ? conv.seller_id : conv.buyer_id
@@ -41,7 +51,7 @@ export async function fetchUserConversations(currentUserId: string): Promise<Cha
 
       const { data: msgRows, error: msgErr } = await supabase
         .from("messages")
-        .select("id, conversation_id, sender_id, content, read, created_at")
+        .select("id, conversation_id, sender_id, content, read, deleted_by_sender, deleted_by_recipient, created_at")
         .eq("conversation_id", conv.id)
         .order("created_at", { ascending: true })
 
@@ -56,7 +66,15 @@ export async function fetchUserConversations(currentUserId: string): Promise<Cha
         )
       }
 
-      const messages: ChatMessage[] = (msgRows || []).map((m: any) => ({
+      // Filter out messages soft-deleted by current user
+      const visibleMsgRows = (msgRows || []).filter((m: any) => {
+        const isSender = m.sender_id === currentUserId
+        if (isSender && m.deleted_by_sender === true) return false
+        if (!isSender && m.deleted_by_recipient === true) return false
+        return true
+      })
+
+      const messages: ChatMessage[] = visibleMsgRows.map((m: any) => ({
         id: m.id,
         conversationId: m.conversation_id,
         body: m.content,
@@ -105,6 +123,8 @@ export async function getOrCreateConversationInSupabase(
       item_id,
       buyer_id,
       seller_id,
+      deleted_by_buyer,
+      deleted_by_seller,
       created_at,
       items ( id, title, type ),
       buyer:profiles!buyer_id ( id, full_name ),
@@ -127,6 +147,16 @@ export async function getOrCreateConversationInSupabase(
       (c.buyer_id === currentUserId && c.seller_id === params.otherPartyUserId) ||
       (c.buyer_id === params.otherPartyUserId && c.seller_id === currentUserId)
   )
+
+  // If conversation was previously soft deleted for current user, reset soft delete flag upon opening
+  if (convRow) {
+    const isBuyer = convRow.buyer_id === currentUserId
+    const isDeletedForUser = isBuyer ? convRow.deleted_by_buyer : convRow.deleted_by_seller
+    if (isDeletedForUser) {
+      const updatePayload = isBuyer ? { deleted_by_buyer: false } : { deleted_by_seller: false }
+      await supabase.from("conversations").update(updatePayload).eq("id", convRow.id)
+    }
+  }
 
   // 2. If not existing, create new conversation row in Supabase
   if (!convRow) {
@@ -180,7 +210,7 @@ export async function getOrCreateConversationInSupabase(
   // 3. Fetch messages for conversation
   const { data: msgRows, error: msgErr } = await supabase
     .from("messages")
-    .select("id, conversation_id, sender_id, content, read, created_at")
+    .select("id, conversation_id, sender_id, content, read, deleted_by_sender, deleted_by_recipient, created_at")
     .eq("conversation_id", convRow.id)
     .order("created_at", { ascending: true })
 
@@ -198,7 +228,15 @@ export async function getOrCreateConversationInSupabase(
   const otherPartyProfile = isBuyer ? convRow.seller : convRow.buyer
   const otherPartyId = isBuyer ? convRow.seller_id : convRow.buyer_id
 
-  const messages: ChatMessage[] = (msgRows || []).map((m: any) => ({
+  // Filter out messages soft-deleted by current user
+  const visibleMsgRows = (msgRows || []).filter((m: any) => {
+    const isSender = m.sender_id === currentUserId
+    if (isSender && m.deleted_by_sender === true) return false
+    if (!isSender && m.deleted_by_recipient === true) return false
+    return true
+  })
+
+  const messages: ChatMessage[] = visibleMsgRows.map((m: any) => ({
     id: m.id,
     conversationId: m.conversation_id,
     body: m.content,
@@ -237,10 +275,11 @@ export async function sendMessageToSupabase(
     return null
   }
 
-  console.log(
-    "[ChatService] sendMessageToSupabase - inserting message into Supabase for conversationId:",
-    conversationId
-  )
+  // If conversation was soft-deleted by seller or buyer, reset deletion flags on new message
+  await supabase
+    .from("conversations")
+    .update({ deleted_by_buyer: false, deleted_by_seller: false })
+    .eq("id", conversationId)
 
   const { data: newMsg, error } = await supabase
     .from("messages")
@@ -249,6 +288,8 @@ export async function sendMessageToSupabase(
       sender_id: currentUserId,
       content: content.trim(),
       read: false,
+      deleted_by_sender: false,
+      deleted_by_recipient: false,
     })
     .select("id, conversation_id, sender_id, content, read, created_at")
     .single()
@@ -263,8 +304,6 @@ export async function sendMessageToSupabase(
     )
     return null
   }
-
-  console.log("[ChatService] Successfully inserted message in Supabase with message ID:", newMsg?.id)
 
   return {
     id: newMsg.id,
@@ -306,19 +345,27 @@ export async function fetchTotalUnreadCountFromSupabase(currentUserId: string): 
 
   const { data: convs, error: convErr } = await supabase
     .from("conversations")
-    .select("id")
+    .select("id, buyer_id, seller_id, deleted_by_buyer, deleted_by_seller")
     .or(`buyer_id.eq.${currentUserId},seller_id.eq.${currentUserId}`)
 
   if (convErr || !convs || convs.length === 0) return 0
 
-  const convIds = convs.map((c: any) => c.id)
+  const activeConvIds = convs
+    .filter((c: any) => {
+      const isBuyer = c.buyer_id === currentUserId
+      return isBuyer ? !c.deleted_by_buyer : !c.deleted_by_seller
+    })
+    .map((c: any) => c.id)
+
+  if (activeConvIds.length === 0) return 0
 
   const { count, error: countErr } = await supabase
     .from("messages")
     .select("id", { count: "exact", head: true })
-    .in("conversation_id", convIds)
+    .in("conversation_id", activeConvIds)
     .neq("sender_id", currentUserId)
     .eq("read", false)
+    .eq("deleted_by_recipient", false)
 
   if (countErr) {
     console.error(
@@ -332,4 +379,88 @@ export async function fetchTotalUnreadCountFromSupabase(currentUserId: string): 
   }
 
   return count || 0
+}
+
+export async function deleteMessageFromSupabase(
+  messageId: string,
+  currentUserId: string
+): Promise<boolean> {
+  if (!messageId || !currentUserId) return false
+
+  // Fetch message to see if user is sender or recipient
+  const { data: msg, error: fetchErr } = await supabase
+    .from("messages")
+    .select("sender_id")
+    .eq("id", messageId)
+    .single()
+
+  if (fetchErr || !msg) {
+    console.error("Error fetching message for soft delete:", fetchErr)
+    return false
+  }
+
+  const isSender = msg.sender_id === currentUserId
+  const updatePayload = isSender
+    ? { deleted_by_sender: true }
+    : { deleted_by_recipient: true }
+
+  const { error: updateErr } = await supabase
+    .from("messages")
+    .update(updatePayload)
+    .eq("id", messageId)
+
+  if (updateErr) {
+    console.error(
+      "Error soft deleting message in Supabase:",
+      updateErr.message,
+      updateErr.details,
+      updateErr.hint,
+      updateErr.code
+    )
+    return false
+  }
+
+  return true
+}
+
+export async function deleteConversationFromSupabase(
+  conversationId: string,
+  currentUserId: string
+): Promise<boolean> {
+  if (!conversationId || !currentUserId) return false
+
+  // Fetch conversation to determine buyer/seller role
+  const { data: conv, error: fetchErr } = await supabase
+    .from("conversations")
+    .select("buyer_id, seller_id")
+    .eq("id", conversationId)
+    .single()
+
+  if (fetchErr || !conv) {
+    console.error("Error fetching conversation for soft delete:", fetchErr)
+    return false
+  }
+
+  const isBuyer = conv.buyer_id === currentUserId
+  const updatePayload = isBuyer
+    ? { deleted_by_buyer: true }
+    : { deleted_by_seller: true }
+
+  const { error: updateErr } = await supabase
+    .from("conversations")
+    .update(updatePayload)
+    .eq("id", conversationId)
+
+  if (updateErr) {
+    console.error(
+      "Error soft deleting conversation in Supabase:",
+      updateErr.message,
+      updateErr.details,
+      updateErr.hint,
+      updateErr.code
+    )
+    return false
+  }
+
+  return true
 }

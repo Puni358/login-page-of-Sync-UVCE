@@ -16,6 +16,7 @@ export type LostFoundItem = {
   listerEmail: string
   listerPhone: string
   createdAt: string
+  status?: string
 }
 
 // Alias for backward compatibility

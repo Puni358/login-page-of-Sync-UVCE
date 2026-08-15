@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowRight, MapPin, Calendar, Trash2, Loader2, Tag } from "lucide-react"
+import { ArrowRight, MapPin, Calendar, Trash2, Loader2, Tag, CheckCircle2 } from "lucide-react"
 import type { LostFoundItem } from "@/lib/lost-and-found/types"
 import { ChatButton } from "@/components/chat/chat-button"
 import { useAuth } from "@/lib/auth/auth-context"
@@ -15,16 +15,16 @@ interface FoundItemCardProps {
 }
 
 export function FoundItemCard({ item, onDeleteSuccess }: FoundItemCardProps) {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const [isDeleting, setIsDeleting] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
   const isOwner = user?.id === item.listerId
-  const isAdmin = user?.role === "admin"
   const canDelete = isOwner || isAdmin
 
   const hasPhoto = item.photos.length > 0
   const isLost = item.type === "lost"
+  const isResolved = item.status === "resolved"
 
   const handleDelete = async () => {
     setIsDeleting(true)
@@ -49,7 +49,12 @@ export function FoundItemCard({ item, onDeleteSuccess }: FoundItemCardProps) {
     : ""
 
   return (
-    <div className="group flex flex-col overflow-hidden rounded-2xl border border-white/5 bg-[#12121a] transition-all hover:border-purple-500/25 hover:shadow-[0_8px_32px_rgba(168,85,247,0.12)]">
+    <div
+      className={cn(
+        "group flex flex-col overflow-hidden rounded-2xl border border-white/5 bg-[#12121a] transition-all hover:border-purple-500/25 hover:shadow-[0_8px_32px_rgba(168,85,247,0.12)]",
+        isResolved && "opacity-75 hover:opacity-100 border-emerald-500/20"
+      )}
+    >
       <div className="relative aspect-[4/3] overflow-hidden bg-[#1a1a26]">
         <Link href={`/lost-and-found/${item.id}`} className="block h-full w-full">
           {hasPhoto ? (
@@ -57,7 +62,10 @@ export function FoundItemCard({ item, onDeleteSuccess }: FoundItemCardProps) {
             <img
               src={item.photos[0]}
               alt={item.title}
-              className="h-full w-full object-cover transition-transform group-hover:scale-105"
+              className={cn(
+                "h-full w-full object-cover transition-transform group-hover:scale-105",
+                isResolved && "grayscale-[25%]"
+              )}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-white/30">
@@ -77,6 +85,14 @@ export function FoundItemCard({ item, onDeleteSuccess }: FoundItemCardProps) {
         >
           {isLost ? "Lost Item" : "Found Item"}
         </div>
+
+        {/* Resolved Badge */}
+        {isResolved && (
+          <div className="absolute left-3 bottom-3 inline-flex items-center gap-1 rounded-lg bg-emerald-600/90 px-2.5 py-1 text-[11px] font-bold text-white shadow-lg backdrop-blur-md border border-emerald-400/30">
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-200" />
+            <span>✓ Resolved</span>
+          </div>
+        )}
 
         {/* Delete Button for Owner or Admin */}
         {canDelete && (

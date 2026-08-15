@@ -3,10 +3,15 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, MapPin, Trash2, Loader2 } from "lucide-react"
+import { ArrowLeft, CheckCircle2, MapPin, Trash2, Loader2 } from "lucide-react"
 import { SellerContactPanel } from "@/components/marketplace/seller-contact-panel"
 import { ChatButton } from "@/components/chat/chat-button"
-import { getProductById, deleteProduct, adminDeleteProduct } from "@/lib/marketplace/product-service"
+import {
+  getProductById,
+  deleteProduct,
+  adminDeleteProduct,
+  updateItemStatus,
+} from "@/lib/marketplace/product-service"
 import type { Product } from "@/lib/marketplace/types"
 import { formatDate, formatPrice } from "@/lib/marketplace/utils"
 import { useAuth } from "@/lib/auth/auth-context"
@@ -19,6 +24,7 @@ export default function ProductDetailPage() {
   const [activePhotoIndex, setActivePhotoIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
 
   const productId = params.id as string
   const loginHref = `/?redirect=${encodeURIComponent(`/marketplace/${productId}`)}&mode=login`
@@ -30,21 +36,23 @@ export default function ProductDetailPage() {
   }, [productId])
 
   const isOwnListing = user?.id === product?.sellerId
-  const canDelete = isOwnListing || isAdmin
+  const canManage = isOwnListing || isAdmin
 
   const handleDelete = async () => {
     if (!product || !user) return
-    const confirmMessage = isAdmin && !isOwnListing
-      ? "As an Admin, are you sure you want to delete this listing for moderation?"
-      : "Are you sure you want to delete your listing?"
+    const confirmMessage =
+      isAdmin && !isOwnListing
+        ? "As an Admin, are you sure you want to delete this listing for moderation?"
+        : "Are you sure you want to delete your listing?"
 
     if (!window.confirm(confirmMessage)) return
 
     setIsDeleting(true)
     try {
-      const success = isAdmin && !isOwnListing
-        ? await adminDeleteProduct(product.id)
-        : await deleteProduct(product.id, user.id)
+      const success =
+        isAdmin && !isOwnListing
+          ? await adminDeleteProduct(product.id)
+          : await deleteProduct(product.id, user.id)
 
       if (success) {
         router.push("/marketplace")
@@ -55,6 +63,25 @@ export default function ProductDetailPage() {
       alert("Error deleting listing.")
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const handleToggleSoldStatus = async () => {
+    if (!product) return
+    const newStatus = product.status === "sold" ? "active" : "sold"
+    setIsUpdatingStatus(true)
+    try {
+      const success = await updateItemStatus(product.id, newStatus)
+      if (success) {
+        setProduct((prev) => (prev ? { ...prev, status: newStatus } : null))
+      } else {
+        alert("Failed to update status. Please try again.")
+      }
+    } catch (err) {
+      console.error("Error updating status:", err)
+      alert("Error updating status.")
+    } finally {
+      setIsUpdatingStatus(false)
     }
   }
 
@@ -88,12 +115,14 @@ export default function ProductDetailPage() {
     )
   }
 
-  const photos = product.photos.length > 0 ? product.photos : (product.imageUrl ? [product.imageUrl] : [])
+  const photos =
+    product.photos.length > 0 ? product.photos : product.imageUrl ? [product.imageUrl] : []
   const currentPhoto = photos[activePhotoIndex] || photos[0]
+  const isSold = product.status === "sold"
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/marketplace"
           className="inline-flex items-center gap-2 text-sm text-white/50 transition-colors hover:text-white"
@@ -102,20 +131,42 @@ export default function ProductDetailPage() {
           Back to marketplace
         </Link>
 
-        {canDelete && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={isDeleting}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 disabled:opacity-50"
-          >
-            {isDeleting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5" />
-            )}
-            Delete Listing
-          </button>
+        {canManage && (
+          <div className="flex items-center gap-2">
+            {/* Mark as Sold button */}
+            <button
+              type="button"
+              onClick={handleToggleSoldStatus}
+              disabled={isUpdatingStatus}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-all disabled:opacity-50 ${
+                isSold
+                  ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
+                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+              }`}
+            >
+              {isUpdatingStatus ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+              )}
+              {isSold ? "Marked as Sold (Undo)" : "Mark as Sold"}
+            </button>
+
+            {/* Delete button */}
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 disabled:opacity-50"
+            >
+              {isDeleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Delete Listing
+            </button>
+          </div>
         )}
       </div>
 
@@ -128,11 +179,18 @@ export default function ProductDetailPage() {
               <img
                 src={currentPhoto}
                 alt={product.title}
-                className="h-full w-full object-cover"
+                className={`h-full w-full object-cover ${isSold ? "grayscale-[20%]" : ""}`}
               />
             ) : (
               <div className="flex h-full items-center justify-center text-white/30">
                 No photo available
+              </div>
+            )}
+
+            {isSold && (
+              <div className="absolute right-4 top-4 inline-flex items-center gap-1.5 rounded-xl bg-emerald-600/90 px-3 py-1.5 text-xs font-bold text-white shadow-xl backdrop-blur-md border border-emerald-400/40">
+                <CheckCircle2 className="h-4 w-4 text-emerald-200" />
+                <span>✓ Sold</span>
               </div>
             )}
           </div>
@@ -169,6 +227,11 @@ export default function ProductDetailPage() {
                 <MapPin className="h-3 w-3" />
                 {product.location}
               </span>
+              {isSold && (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/20 px-2.5 py-1 text-xs font-bold text-emerald-400 border border-emerald-500/30">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> ✓ Sold
+                </span>
+              )}
             </div>
             <h1 className="mt-3 text-2xl font-bold text-white sm:text-3xl">{product.title}</h1>
             <p className="mt-1 text-sm text-white/40">Listed on {formatDate(product.createdAt)}</p>
