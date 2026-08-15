@@ -2,9 +2,10 @@ export type ChatItemType = "marketplace" | "lost-found"
 
 export interface ChatMessage {
   id: string
+  conversationId?: string
   body: string
   senderId: string
-  senderName: string
+  senderName?: string
   isOwn: boolean
   read: boolean
   createdAt: string

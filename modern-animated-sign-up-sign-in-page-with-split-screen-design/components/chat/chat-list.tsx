@@ -8,6 +8,15 @@ interface ChatListProps {
   onSelect: (id: string) => void
 }
 
+function getItemTypeLabel(type?: string): string {
+  if (!type) return "Marketplace"
+  const t = type.toLowerCase()
+  if (t === "lost") return "Lost"
+  if (t === "found") return "Found"
+  if (t === "market" || t === "marketplace") return "Marketplace"
+  return type.charAt(0).toUpperCase() + type.slice(1)
+}
+
 export function ChatList({ conversations, onSelect }: ChatListProps) {
   if (conversations.length === 0) {
     return (
@@ -28,6 +37,8 @@ export function ChatList({ conversations, onSelect }: ChatListProps) {
       {conversations.map((conv) => {
         const lastMsg = conv.messages[conv.messages.length - 1]
         const hasUnread = conv.unreadCount > 0
+        const typeLabel = getItemTypeLabel(conv.itemType)
+        const conversationLabel = `${conv.otherPartyName} – ${conv.itemTitle} (${typeLabel})`
 
         return (
           <li key={conv.id}>
@@ -45,7 +56,7 @@ export function ChatList({ conversations, onSelect }: ChatListProps) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <p className="truncate text-sm font-medium text-white group-hover:text-purple-300 transition-colors">
-                    {conv.otherPartyName}
+                    {conversationLabel}
                   </p>
                   <span className="shrink-0 text-[10px] text-white/30">
                     {new Date(conv.updatedAt).toLocaleDateString("en-IN", {
@@ -54,13 +65,15 @@ export function ChatList({ conversations, onSelect }: ChatListProps) {
                     })}
                   </span>
                 </div>
-                <p className="truncate text-xs font-medium text-purple-400/80">{conv.itemTitle}</p>
+                <p className="truncate text-xs font-medium text-purple-400/80">
+                  {conv.itemTitle} ({typeLabel})
+                </p>
                 <p className="mt-0.5 truncate text-xs text-white/40">
                   {lastMsg?.body ?? "No messages"}
                 </p>
               </div>
 
-              {/* Requirement 3: Red unread badge on chat/inbox entry */}
+              {/* Red unread badge */}
               {hasUnread && (
                 <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white shadow-sm shadow-red-500/30">
                   {conv.unreadCount > 9 ? "9+" : conv.unreadCount}
