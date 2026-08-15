@@ -1,5 +1,15 @@
 export type ApprovalStatus = "pending" | "approved" | "rejected"
 
+export interface Profile {
+  id: string
+  email: string | null
+  usn: string | null
+  phone_number: string | null
+  full_name: string | null
+  status: ApprovalStatus
+  is_admin: boolean | null
+}
+
 export interface AuthUser {
   id: string
   firstName: string
@@ -8,6 +18,7 @@ export interface AuthUser {
   usn?: string
   phone?: string
   approvalStatus?: ApprovalStatus
+  isAdmin?: boolean
 }
 
 export interface SignUpInput {
@@ -23,12 +34,4 @@ export interface LoginInput {
   email: string
   password: string
   rememberMe?: boolean
-}
-
-export interface PendingUser {
-  id: string
-  name: string
-  usn: string
-  phone: string
-  status: ApprovalStatus
 }

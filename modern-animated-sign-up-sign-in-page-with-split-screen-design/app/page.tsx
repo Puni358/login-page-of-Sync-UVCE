@@ -53,7 +53,7 @@ function AuthPageContent() {
 	
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { signUp, login, isAuthenticated, isApproved, isPending, isLoading: authLoading } = useAuth()
+  const { signUp, login, signInWithGoogle, isAuthenticated, isApproved, isPending, isLoading: authLoading } = useAuth()
 
   const redirectTo = searchParams.get("redirect") || "/marketplace"
   const initialMode = searchParams.get("mode")
@@ -231,6 +231,13 @@ function AuthPageContent() {
         setIsTransitioning(false)
       }, 50)
     }, 150)
+  }
+
+  const handleGoogleSignIn = async () => {
+    const result = await signInWithGoogle()
+    if (!result.success) {
+      setErrors({ email: result.error ?? "Google sign-in failed" })
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -861,6 +868,7 @@ function AuthPageContent() {
           >
             <button
               type="button"
+              onClick={handleGoogleSignIn}
               className="flex h-11 w-full items-center justify-center gap-2.5 rounded-xl border border-white/5 bg-[#1a1a26] text-sm text-white transition-all duration-300 hover:border-purple-500/25 hover:bg-[#1f1f2a] hover:shadow-[0_4px_16px_rgba(168,85,247,0.1)] active:scale-[0.98]"
             >
               <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">

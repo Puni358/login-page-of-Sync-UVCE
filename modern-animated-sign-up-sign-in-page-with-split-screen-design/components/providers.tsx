@@ -16,7 +16,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const showChat =
     pathname !== "/" &&
     !pathname.startsWith("/admin") &&
-    !pathname.startsWith("/pending-approval")
+    !pathname.startsWith("/pending-approval") &&
+    !pathname.startsWith("/auth/callback")
 
   const isProtectedRoute = PROTECTED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)

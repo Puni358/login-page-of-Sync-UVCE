@@ -1,10 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowLeft, Check, Shield, X } from "lucide-react"
-import { useEffect, useState } from "react"
-import { getPendingUsers } from "@/lib/auth/pending-users-store"
-import type { PendingUser } from "@/lib/auth/types"
+import { useRouter } from "next/navigation"
+import { ArrowLeft, Check, Loader2, Shield, X } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { useAuth } from "@/lib/auth/auth-context"
+import { fetchPendingProfiles, updateProfileStatus } from "@/lib/auth/admin-service"
+import type { Profile } from "@/lib/auth/types"
 import {
   Table,
   TableBody,
@@ -14,16 +16,78 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
+function displayValue(value: string | null | undefined, fallback = "—") {
+  return value?.trim() ? value : fallback
+}
+
 export default function AdminPage() {
-  const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([])
+  const router = useRouter()
+  const { isLoading: authLoading, isAuthenticated, isAdmin } = useAuth()
+
+  const [pendingUsers, setPendingUsers] = useState<Profile[]>([])
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [actingOnId, setActingOnId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const loadPendingUsers = useCallback(async () => {
+    setIsLoadingUsers(true)
+    setLoadError(null)
+    try {
+      const users = await fetchPendingProfiles()
+      setPendingUsers(users)
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load pending users")
+    } finally {
+      setIsLoadingUsers(false)
+    }
+  }, [])
 
   useEffect(() => {
-    setPendingUsers(getPendingUsers())
-  }, [])
+    if (authLoading) return
+
+    if (!isAuthenticated) {
+      router.replace("/?mode=login&redirect=%2Fadmin")
+      return
+    }
+
+    if (!isAdmin) {
+      router.replace("/marketplace")
+    }
+  }, [authLoading, isAuthenticated, isAdmin, router])
+
+  useEffect(() => {
+    if (authLoading || !isAdmin) return
+    loadPendingUsers()
+  }, [authLoading, isAdmin, loadPendingUsers])
+
+  const handleStatusUpdate = async (
+    profileId: string,
+    status: "approved" | "rejected"
+  ) => {
+    setActingOnId(profileId)
+    setActionError(null)
+    try {
+      await updateProfileStatus(profileId, status)
+      setPendingUsers((current) => current.filter((user) => user.id !== profileId))
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to update user status")
+    } finally {
+      setActingOnId(null)
+    }
+  }
+
+  if (authLoading || !isAuthenticated || !isAdmin) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#1a1a24]">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#1a1a24] px-4 py-8 sm:px-6">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-500/15 text-purple-400">
@@ -52,7 +116,23 @@ export default function AdminPage() {
             </p>
           </div>
 
-          {pendingUsers.length === 0 ? (
+          {loadError && (
+            <div className="border-b border-red-500/20 bg-red-500/10 px-6 py-3 text-sm text-red-400">
+              {loadError}
+            </div>
+          )}
+
+          {actionError && (
+            <div className="border-b border-red-500/20 bg-red-500/10 px-6 py-3 text-sm text-red-400">
+              {actionError}
+            </div>
+          )}
+
+          {isLoadingUsers ? (
+            <div className="flex items-center justify-center px-6 py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-purple-400" />
+            </div>
+          ) : pendingUsers.length === 0 ? (
             <div className="px-6 py-12 text-center">
               <p className="text-sm text-white/50">No pending registrations at the moment.</p>
             </div>
@@ -61,45 +141,63 @@ export default function AdminPage() {
               <TableHeader>
                 <TableRow className="border-white/5 hover:bg-transparent">
                   <TableHead className="text-white/50">Name</TableHead>
+                  <TableHead className="text-white/50">Email</TableHead>
                   <TableHead className="text-white/50">USN</TableHead>
                   <TableHead className="text-white/50">Phone</TableHead>
                   <TableHead className="text-right text-white/50">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pendingUsers.map((user) => (
-                  <TableRow key={user.id} className="border-white/5 hover:bg-white/[0.02]">
-                    <TableCell className="font-medium text-white/90">{user.name}</TableCell>
-                    <TableCell className="text-white/70">{user.usn}</TableCell>
-                    <TableCell className="text-white/70">{user.phone}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                          Approve
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                          Reject
-                        </button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {pendingUsers.map((user) => {
+                  const isActing = actingOnId === user.id
+
+                  return (
+                    <TableRow key={user.id} className="border-white/5 hover:bg-white/[0.02]">
+                      <TableCell className="font-medium text-white/90">
+                        {displayValue(user.full_name)}
+                      </TableCell>
+                      <TableCell className="text-white/70">{displayValue(user.email)}</TableCell>
+                      <TableCell className="text-white/70">{displayValue(user.usn)}</TableCell>
+                      <TableCell className="text-white/70">
+                        {displayValue(user.phone_number)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            disabled={isActing}
+                            onClick={() => handleStatusUpdate(user.id, "approved")}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {isActing ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Check className="h-3.5 w-3.5" />
+                            )}
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isActing}
+                            onClick={() => handleStatusUpdate(user.id, "rejected")}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {isActing ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <X className="h-3.5 w-3.5" />
+                            )}
+                            Reject
+                          </button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           )}
         </div>
-
-        <p className="mt-4 text-center text-xs text-white/30">
-          Approve/Reject actions are UI-only — backend logic coming soon.
-        </p>
       </div>
     </div>
   )

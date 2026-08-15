@@ -9,12 +9,16 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { supabase } from "@/lib/supabaseClient"
 import type { AuthUser, LoginInput, SignUpInput } from "./types"
+import { resolveAuthUser } from "./profile-service"
 import {
-  getInitialAuthUser,
+  getSessionAuthUser,
+  performGoogleSignIn,
   performLogin,
   performLogout,
   performSignUp,
+  updateUserPhone,
 } from "./auth-service"
 
 interface AuthContextValue {
@@ -23,32 +27,63 @@ interface AuthContextValue {
   isAuthenticated: boolean
   isApproved: boolean
   isPending: boolean
+  isAdmin: boolean
   login: (input: LoginInput) => Promise<{ success: boolean; error?: string; isPending?: boolean }>
   signUp: (input: SignUpInput) => Promise<{ success: boolean; error?: string; isPending?: boolean }>
-  logout: () => void
-  updatePhone: (phone: string) => void
+  signInWithGoogle: () => Promise<{ success: boolean; error?: string }>
+  logout: () => Promise<void>
+  updatePhone: (phone: string) => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
-
-const AUTH_STORAGE_KEY = "nova_auth_session"
-
-function writeSession(user: AuthUser | null): void {
-  if (typeof window === "undefined") return
-  if (user) {
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
-  } else {
-    localStorage.removeItem(AUTH_STORAGE_KEY)
-  }
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  const refreshUser = useCallback(async () => {
+    const authUser = await getSessionAuthUser()
+    setUser(authUser)
+  }, [])
+
   useEffect(() => {
-    setUser(getInitialAuthUser())
-    setIsLoading(false)
+    let mounted = true
+
+    const init = async () => {
+      try {
+        const authUser = await getSessionAuthUser()
+        if (mounted) setUser(authUser)
+      } finally {
+        if (mounted) setIsLoading(false)
+      }
+    }
+
+    init()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!mounted) return
+
+      if (session?.user) {
+        try {
+          const authUser = await resolveAuthUser(session.user)
+          setUser(authUser)
+        } catch {
+          setUser(null)
+        }
+      } else {
+        setUser(null)
+      }
+
+      setIsLoading(false)
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   const login = useCallback(async (input: LoginInput) => {
@@ -69,23 +104,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: false, error: result.error ?? "Sign up failed" }
   }, [])
 
-  const logout = useCallback(() => {
-    performLogout()
+  const signInWithGoogle = useCallback(async () => {
+    return performGoogleSignIn()
+  }, [])
+
+  const logout = useCallback(async () => {
+    await performLogout()
     setUser(null)
   }, [])
 
   const updatePhone = useCallback(
-    (phone: string) => {
+    async (phone: string) => {
       if (!user) return
-      const updated = { ...user, phone: phone.trim() }
-      writeSession(updated)
-      setUser(updated)
+      await updateUserPhone(user.id, phone)
+      setUser({ ...user, phone: phone.trim() })
     },
     [user]
   )
 
   const isPending = user?.approvalStatus === "pending"
-  const isApproved = !!user && user.approvalStatus !== "pending" && user.approvalStatus !== "rejected"
+  const isApproved =
+    !!user && user.approvalStatus !== "pending" && user.approvalStatus !== "rejected"
+  const isAdmin = user?.isAdmin === true
 
   const value = useMemo(
     () => ({
@@ -94,12 +134,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: !!user,
       isApproved,
       isPending,
+      isAdmin,
       login,
       signUp,
+      signInWithGoogle,
       logout,
       updatePhone,
+      refreshUser,
     }),
-    [user, isLoading, isApproved, isPending, login, signUp, logout, updatePhone]
+    [
+      user,
+      isLoading,
+      isApproved,
+      isPending,
+      isAdmin,
+      login,
+      signUp,
+      signInWithGoogle,
+      logout,
+      updatePhone,
+      refreshUser,
+    ]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

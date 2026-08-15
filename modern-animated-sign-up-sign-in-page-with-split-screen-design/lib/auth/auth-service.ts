@@ -1,82 +1,32 @@
+import { supabase } from "@/lib/supabaseClient"
 import type { AuthUser, LoginInput, SignUpInput } from "./types"
-import { addPendingUser } from "./pending-users-store"
+import { mapToAuthUser, resolveAuthUser } from "./profile-service"
 import {
   clearRememberToken,
-  readRememberToken,
   writeRememberToken,
 } from "./remember-me"
 
-const AUTH_STORAGE_KEY = "nova_auth_session"
+export async function getSessionAuthUser(): Promise<AuthUser | null> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
 
-function readSession(): AuthUser | null {
-  if (typeof window === "undefined") return null
-  try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as AuthUser) : null
-  } catch {
-    return null
-  }
-}
-
-function writeSession(user: AuthUser | null): void {
-  if (typeof window === "undefined") return
-  if (user) {
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user))
-  } else {
-    localStorage.removeItem(AUTH_STORAGE_KEY)
-  }
-}
-
-function generateUserId(): string {
-  return `user_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-}
-
-function restoreFromRemember(): AuthUser | null {
-  const remember = readRememberToken()
-  if (!remember) return null
-  return {
-    id: remember.userId,
-    firstName: remember.firstName,
-    lastName: remember.lastName,
-    email: remember.email,
-  }
-}
-
-export function getInitialAuthUser(): AuthUser | null {
-  return readSession() ?? restoreFromRemember()
+  if (!session?.user) return null
+  return resolveAuthUser(session.user)
 }
 
 export async function performLogin(
   input: LoginInput
 ): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
-  await new Promise((r) => setTimeout(r, 400))
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: input.email.trim(),
+    password: input.password,
+  })
 
-  const existing = readSession()
-  let user: AuthUser
+  if (error) return { success: false, error: error.message }
+  if (!data.user) return { success: false, error: "Login failed" }
 
-  if (existing && existing.email.toLowerCase() === input.email.toLowerCase()) {
-    user = existing
-  } else {
-    const remembered = readRememberToken()
-    if (remembered && remembered.email.toLowerCase() === input.email.toLowerCase()) {
-      user = {
-        id: remembered.userId,
-        firstName: remembered.firstName,
-        lastName: remembered.lastName,
-        email: remembered.email,
-      }
-    } else {
-      user = {
-        id: generateUserId(),
-        firstName: "Student",
-        lastName: "User",
-        email: input.email.trim(),
-        approvalStatus: "approved",
-      }
-    }
-  }
-
-  writeSession(user)
+  const user = await resolveAuthUser(data.user)
 
   if (input.rememberMe) {
     writeRememberToken({
@@ -95,33 +45,98 @@ export async function performLogin(
 export async function performSignUp(
   input: SignUpInput
 ): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
-  await new Promise((r) => setTimeout(r, 600))
-
   const trimmedUsn = input.usn.trim().toUpperCase()
   const trimmedPhone = input.phone.trim()
+  const trimmedEmail = input.email.trim()
+  const fullName = `${input.firstName.trim()} ${input.lastName.trim()}`.trim()
 
-  const newUser: AuthUser = {
-    id: generateUserId(),
-    firstName: input.firstName.trim(),
-    lastName: input.lastName.trim(),
-    email: input.email.trim(),
-    usn: trimmedUsn,
-    phone: trimmedPhone,
-    approvalStatus: "pending",
-  }
-
-  addPendingUser({
-    id: newUser.id,
-    name: `${newUser.firstName} ${newUser.lastName}`,
-    usn: trimmedUsn,
-    phone: trimmedPhone,
+  const { data, error } = await supabase.auth.signUp({
+    email: trimmedEmail,
+    password: input.password,
   })
 
-  writeSession(newUser)
-  return { success: true, user: newUser }
+  if (error) return { success: false, error: error.message }
+  if (!data.user) return { success: false, error: "Sign up failed" }
+
+  const { error: profileError } = await supabase.from("profiles").insert({
+    id: data.user.id,
+    email: trimmedEmail,
+    usn: trimmedUsn,
+    phone_number: trimmedPhone,
+    full_name: fullName,
+    status: "pending",
+  })
+
+  if (profileError) {
+    return { success: false, error: profileError.message }
+  }
+
+  if (!data.session) {
+    return {
+      success: true,
+      user: mapToAuthUser(data.user, {
+        id: data.user.id,
+        email: trimmedEmail,
+        usn: trimmedUsn,
+        phone_number: trimmedPhone,
+        full_name: fullName,
+        status: "pending",
+        is_admin: false,
+      }),
+    }
+  }
+
+  const user = await resolveAuthUser(data.user)
+  return { success: true, user }
 }
 
-export function performLogout(): void {
-  writeSession(null)
+export async function performGoogleSignIn(): Promise<{ success: boolean; error?: string }> {
+  const redirectTo = `${window.location.origin}/auth/callback`
+
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo },
+  })
+
+  if (error) return { success: false, error: error.message }
+  return { success: true }
+}
+
+export async function performLogout(): Promise<void> {
+  await supabase.auth.signOut()
   clearRememberToken()
+}
+
+export async function updateUserPhone(userId: string, phone: string): Promise<void> {
+  const trimmedPhone = phone.trim()
+  const { error } = await supabase
+    .from("profiles")
+    .update({ phone_number: trimmedPhone })
+    .eq("id", userId)
+
+  if (error) throw error
+}
+
+export async function handleAuthCallback(): Promise<{
+  user: AuthUser | null
+  error?: string
+}> {
+  const params = new URLSearchParams(window.location.search)
+  const code = params.get("code")
+
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code)
+    if (error) return { user: null, error: error.message }
+  }
+
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession()
+
+  if (sessionError) return { user: null, error: sessionError.message }
+  if (!session?.user) return { user: null, error: "No active session" }
+
+  const user = await resolveAuthUser(session.user)
+  return { user }
 }
