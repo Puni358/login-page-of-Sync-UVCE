@@ -123,3 +123,64 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .signup-input {
+    @apply w-full bg-[#1a1a26] border border-white/5 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 transition-all duration-300;
+  }
+
+  .signup-input:focus {
+    @apply outline-none border-purple-500/70 ring-2 ring-purple-500/25 shadow-[0_0_20px_rgba(168,85,247,0.12)];
+  }
+
+  .signup-input-error {
+    @apply border-red-400/50 ring-1 ring-red-400/20;
+  }
+
+  .signup-input-error:focus {
+    @apply border-red-400/60 ring-2 ring-red-400/20 shadow-[0_0_16px_rgba(248,113,113,0.1)];
+  }
+
+  .error-message-enter {
+    animation: error-slide-in 0.25s ease-out forwards;
+  }
+
+  .requirement-enter {
+    animation: requirement-fade 0.2s ease-out forwards;
+  }
+
+  @keyframes error-slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes requirement-fade {
+    from {
+      opacity: 0.5;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes carousel-caption-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .carousel-caption-enter {
+    animation: carousel-caption-in 0.6s ease-out forwards;
+  }
+}
