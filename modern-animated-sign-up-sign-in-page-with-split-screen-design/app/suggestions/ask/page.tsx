@@ -1,22 +1,18 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import { useAuth } from "@/lib/auth/auth-context"
-import { SUGGESTION_CATEGORIES } from "@/lib/suggestions/suggestion-service"
-import { createQuestion } from "@/lib/suggestions/suggestion-service"
-import type { SuggestionCategory } from "@/lib/suggestions/types"
-import { useState } from "react"
+import { SUGGESTION_CATEGORIES, createQuestion } from "@/lib/suggestions/suggestion-service"
 import { cn } from "@/lib/utils"
 
 export default function AskQuestionPage() {
   const router = useRouter()
   const { user, isAuthenticated, isLoading } = useAuth()
-  const [category, setCategory] = useState<SuggestionCategory | "">("")
-  const [title, setTitle] = useState("")
-  const [body, setBody] = useState("")
+  const [category, setCategory] = useState("")
+  const [questionText, setQuestionText] = useState("")
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -36,18 +32,19 @@ export default function AskQuestionPage() {
     e.preventDefault()
     const next: Record<string, string> = {}
     if (!category) next.category = "Select a category"
-    if (!title.trim()) next.title = "Title is required"
-    if (!body.trim()) next.body = "Question is required"
+    if (!questionText.trim()) next.questionText = "Question text is required"
     setErrors(next)
     if (Object.keys(next).length > 0 || !user || !category) return
 
     setIsSubmitting(true)
     try {
-      const question = await createQuestion(
-        { category, title, body },
-        { id: user.id, name: `${user.firstName} ${user.lastName}` }
+      const newQuestion = await createQuestion(
+        { category, question: questionText },
+        user.id
       )
-      router.push(`/suggestions/${question.id}`)
+      router.push(`/suggestions/${newQuestion.id}`)
+    } catch (err: any) {
+      setErrors({ form: err?.message || "Failed to submit question. Please try again." })
     } finally {
       setIsSubmitting(false)
     }
@@ -66,22 +63,30 @@ export default function AskQuestionPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <Link href="/suggestions" className="inline-flex items-center gap-2 text-sm text-white/50 hover:text-white">
-        <ArrowLeft className="h-4 w-4" /> Back
+        <ArrowLeft className="h-4 w-4" /> Back to Suggestions
       </Link>
+
       <div>
         <h1 className="text-2xl font-bold text-white">Ask a Question</h1>
-        <p className="mt-1 text-sm text-white/50">Your question will be visible to all students.</p>
+        <p className="mt-1 text-sm text-white/50">Your question will be visible to all students across UVCE.</p>
       </div>
+
       <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-white/5 bg-[#12121a] p-6 sm:p-8">
+        {errors.form && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
+            {errors.form}
+          </div>
+        )}
+
         <div className="space-y-1.5">
           <label htmlFor="category" className="text-sm font-medium text-white/80">Category</label>
           <select
             id="category"
             value={category}
-            onChange={(e) => setCategory(e.target.value as SuggestionCategory)}
-            className={cn(inputClass(!!errors.category), "appearance-none")}
+            onChange={(e) => setCategory(e.target.value)}
+            className={cn(inputClass(!!errors.category), "appearance-none cursor-pointer")}
           >
-            <option value="" disabled>Select category</option>
+            <option value="" disabled className="bg-[#1a1a26]">Select category</option>
             {SUGGESTION_CATEGORIES.map((cat) => (
               <option key={cat.id} value={cat.id} className="bg-[#1a1a26]">
                 {cat.label} — {cat.description}
@@ -92,36 +97,30 @@ export default function AskQuestionPage() {
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="title" className="text-sm font-medium text-white/80">Question title</label>
-          <input
-            id="title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. How do I join the robotics club?"
-            className={inputClass(!!errors.title)}
-          />
-          {errors.title && <p className="text-xs text-red-400">{errors.title}</p>}
-        </div>
-
-        <div className="space-y-1.5">
-          <label htmlFor="body" className="text-sm font-medium text-white/80">Your question</label>
+          <label htmlFor="questionText" className="text-sm font-medium text-white/80">Your Question</label>
           <textarea
-            id="body"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
+            id="questionText"
+            value={questionText}
+            onChange={(e) => setQuestionText(e.target.value)}
             rows={5}
-            placeholder="Provide details so others can help..."
-            className={cn(inputClass(!!errors.body), "resize-none")}
+            placeholder="What would you like to ask or suggest?"
+            className={cn(inputClass(!!errors.questionText), "resize-none")}
           />
-          {errors.body && <p className="text-xs text-red-400">{errors.body}</p>}
+          {errors.questionText && <p className="text-xs text-red-400">{errors.questionText}</p>}
         </div>
 
         <button
           type="submit"
           disabled={isSubmitting}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-500 py-3 text-sm font-medium text-white hover:bg-purple-400 disabled:opacity-70"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-500 py-3 text-sm font-medium text-white hover:bg-purple-400 disabled:opacity-70 transition-colors shadow-lg shadow-purple-500/20"
         >
-          {isSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Posting...</> : "Post Question"}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Posting Question...
+            </>
+          ) : (
+            "Post Question"
+          )}
         </button>
       </form>
     </div>

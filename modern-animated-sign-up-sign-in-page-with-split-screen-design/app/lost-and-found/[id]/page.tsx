@@ -117,7 +117,7 @@ export default function LostFoundItemDetailPage() {
               ) : (
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
               )}
-              {isResolved ? "Marked as Resolved (Undo)" : "Mark as Resolved"}
+              {isResolved ? "Mark as Active" : "Mark as Resolved"}
             </button>
 
             {showConfirm ? (

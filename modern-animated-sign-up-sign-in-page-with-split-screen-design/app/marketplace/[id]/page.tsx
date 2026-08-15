@@ -149,7 +149,7 @@ export default function ProductDetailPage() {
               ) : (
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
               )}
-              {isSold ? "Marked as Sold (Undo)" : "Mark as Sold"}
+              {isSold ? "Mark as Active" : "Mark as Sold"}
             </button>
 
             {/* Delete button */}

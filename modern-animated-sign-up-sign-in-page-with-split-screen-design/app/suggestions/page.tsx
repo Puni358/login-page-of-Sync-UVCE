@@ -7,33 +7,35 @@ import { QuestionCard } from "@/components/suggestions/question-card"
 import { EmptyState } from "@/components/ui/empty-state"
 import { PageLoader } from "@/components/ui/page-loader"
 import { getQuestions, SUGGESTION_CATEGORIES } from "@/lib/suggestions/suggestion-service"
-import type { SuggestionCategory, SuggestionQuestion } from "@/lib/suggestions/types"
+import type { SuggestionQuestion } from "@/lib/suggestions/types"
 import { useAuth } from "@/lib/auth/auth-context"
 import { cn } from "@/lib/utils"
 
 export default function SuggestionsPage() {
   const { isAuthenticated } = useAuth()
   const [questions, setQuestions] = useState<SuggestionQuestion[]>([])
-  const [category, setCategory] = useState<SuggestionCategory | "all">("all")
+  const [category, setCategory] = useState<string>("all")
   const [search, setSearch] = useState("")
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     setIsLoading(true)
-    getQuestions({ category, search }).then(setQuestions).finally(() => setIsLoading(false))
+    getQuestions({ category, search })
+      .then(setQuestions)
+      .finally(() => setIsLoading(false))
   }, [category, search])
 
   return (
     <div className="space-y-8">
       <section className="rounded-2xl border border-white/5 bg-gradient-to-br from-[#12121a] to-[#1a1028] p-6 sm:p-8">
-        <h1 className="text-2xl font-bold text-white sm:text-3xl">Suggestions (Q&amp;A)</h1>
+        <h1 className="text-2xl font-bold text-white sm:text-3xl">Suggestions &amp; Q&amp;A</h1>
         <p className="mt-2 max-w-2xl text-sm text-white/50 sm:text-base">
-          Ask questions about clubs, academics, resources, and campus life. Answers are visible to everyone.
+          Ask questions about academics, clubs, campus resources, and nearby spots. Answers are visible to everyone.
         </p>
         {isAuthenticated ? (
           <Link
             href="/suggestions/ask"
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-purple-500 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-purple-500/25 hover:bg-purple-400"
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-purple-500 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-purple-500/25 hover:bg-purple-400 transition-colors"
           >
             <Plus className="h-4 w-4" />
             Ask a Question
@@ -48,12 +50,13 @@ export default function SuggestionsPage() {
         )}
       </section>
 
+      {/* Category Pills */}
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => setCategory("all")}
           className={cn(
-            "rounded-xl px-4 py-2 text-sm font-medium transition-all",
+            "rounded-xl px-4 py-2 text-sm font-medium transition-all cursor-pointer",
             category === "all"
               ? "bg-purple-500 text-white shadow-lg shadow-purple-500/25"
               : "border border-white/5 bg-[#1a1a26] text-white/60 hover:text-white"
@@ -67,8 +70,8 @@ export default function SuggestionsPage() {
             type="button"
             onClick={() => setCategory(cat.id)}
             className={cn(
-              "rounded-xl px-4 py-2 text-sm font-medium transition-all",
-              category === cat.id
+              "rounded-xl px-4 py-2 text-sm font-medium transition-all cursor-pointer",
+              category.toLowerCase() === cat.id.toLowerCase()
                 ? "bg-purple-500 text-white shadow-lg shadow-purple-500/25"
                 : "border border-white/5 bg-[#1a1a26] text-white/60 hover:text-white"
             )}
@@ -78,6 +81,7 @@ export default function SuggestionsPage() {
         ))}
       </div>
 
+      {/* Search bar */}
       <div className="relative">
         <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
         <input
@@ -101,7 +105,7 @@ export default function SuggestionsPage() {
           <EmptyState
             icon={MessageCircleQuestion}
             title="No questions yet"
-            description="Be the first to ask about clubs, academics, or campus life."
+            description="Be the first to ask about academics, clubs, or campus life."
             action={
               isAuthenticated ? (
                 <Link

@@ -436,7 +436,7 @@ export default function AdminPage() {
                                     ) : (
                                       <CheckCircle2 className="h-3.5 w-3.5" />
                                     )}
-                                    {isSold ? "Marked Sold" : "Mark as Sold"}
+                                    {isSold ? "Mark as Active" : "Mark as Sold"}
                                   </button>
                                   <button
                                     type="button"
@@ -567,7 +567,7 @@ export default function AdminPage() {
                                     ) : (
                                       <CheckCircle2 className="h-3.5 w-3.5" />
                                     )}
-                                    {isResolved ? "Marked Resolved" : "Mark as Resolved"}
+                                    {isResolved ? "Mark as Active" : "Mark as Resolved"}
                                   </button>
                                   <button
                                     type="button"

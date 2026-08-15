@@ -1,38 +1,36 @@
 export type SuggestionCategory =
-  | "club"
-  | "academics"
-  | "resources"
-  | "events"
-  | "campus-life"
-  | "career"
-  | "other"
+  | "Academics"
+  | "Clubs"
+  | "Resources"
+  | "Nearby Places"
+  | "General"
+  | string
 
 export type SuggestionAnswer = {
   id: string
-  body: string
-  authorId: string
+  suggestionId: string
+  userId: string
   authorName: string
+  answer: string
   createdAt: string
 }
 
 export type SuggestionQuestion = {
   id: string
-  category: SuggestionCategory
-  title: string
-  body: string
-  authorId: string
+  userId: string
   authorName: string
+  category: string
+  question: string
   createdAt: string
   answers: SuggestionAnswer[]
 }
 
 export type CreateQuestionInput = {
-  category: SuggestionCategory
-  title: string
-  body: string
+  category: string
+  question: string
 }
 
 export type CreateAnswerInput = {
   questionId: string
-  body: string
+  answer: string
 }

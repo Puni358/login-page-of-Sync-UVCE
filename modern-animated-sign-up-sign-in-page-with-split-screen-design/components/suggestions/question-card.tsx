@@ -8,6 +8,14 @@ interface QuestionCardProps {
 }
 
 export function QuestionCard({ question }: QuestionCardProps) {
+  const formattedDate = question.createdAt
+    ? new Date(question.createdAt).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : ""
+
   return (
     <Link
       href={`/suggestions/${question.id}`}
@@ -19,15 +27,15 @@ export function QuestionCard({ question }: QuestionCardProps) {
         </span>
         <span className="flex items-center gap-1 text-xs text-white/35">
           <MessageCircle className="h-3.5 w-3.5" />
-          {question.answers.length}
+          {question.answers?.length ?? 0} {question.answers?.length === 1 ? "answer" : "answers"}
         </span>
       </div>
-      <h3 className="mt-3 text-base font-semibold text-white group-hover:text-purple-300 transition-colors">
-        {question.title}
+      <h3 className="mt-3 text-base font-semibold text-white group-hover:text-purple-300 transition-colors line-clamp-3 leading-relaxed">
+        {question.question}
       </h3>
-      <p className="mt-2 line-clamp-2 text-sm text-white/45">{question.body}</p>
       <p className="mt-4 text-xs text-white/30">
-        Asked by {question.authorName} · {new Date(question.createdAt).toLocaleDateString("en-IN")}
+        Asked by <span className="text-white/60 font-medium">{question.authorName}</span>
+        {formattedDate && ` · ${formattedDate}`}
       </p>
     </Link>
   )
