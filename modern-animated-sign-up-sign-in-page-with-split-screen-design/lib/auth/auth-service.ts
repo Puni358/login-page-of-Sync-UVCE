@@ -1,4 +1,5 @@
 import type { AuthUser, LoginInput, SignUpInput } from "./types"
+import { addPendingUser } from "./pending-users-store"
 import {
   clearRememberToken,
   readRememberToken,
@@ -70,6 +71,7 @@ export async function performLogin(
         firstName: "Student",
         lastName: "User",
         email: input.email.trim(),
+        approvalStatus: "approved",
       }
     }
   }
@@ -95,12 +97,26 @@ export async function performSignUp(
 ): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
   await new Promise((r) => setTimeout(r, 600))
 
+  const trimmedUsn = input.usn.trim().toUpperCase()
+  const trimmedPhone = input.phone.trim()
+
   const newUser: AuthUser = {
     id: generateUserId(),
     firstName: input.firstName.trim(),
     lastName: input.lastName.trim(),
     email: input.email.trim(),
+    usn: trimmedUsn,
+    phone: trimmedPhone,
+    approvalStatus: "pending",
   }
+
+  addPendingUser({
+    id: newUser.id,
+    name: `${newUser.firstName} ${newUser.lastName}`,
+    usn: trimmedUsn,
+    phone: trimmedPhone,
+  })
+
   writeSession(newUser)
   return { success: true, user: newUser }
 }

@@ -21,8 +21,10 @@ interface AuthContextValue {
   user: AuthUser | null
   isLoading: boolean
   isAuthenticated: boolean
-  login: (input: LoginInput) => Promise<{ success: boolean; error?: string }>
-  signUp: (input: SignUpInput) => Promise<{ success: boolean; error?: string }>
+  isApproved: boolean
+  isPending: boolean
+  login: (input: LoginInput) => Promise<{ success: boolean; error?: string; isPending?: boolean }>
+  signUp: (input: SignUpInput) => Promise<{ success: boolean; error?: string; isPending?: boolean }>
   logout: () => void
   updatePhone: (phone: string) => void
 }
@@ -53,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await performLogin(input)
     if (result.success && result.user) {
       setUser(result.user)
-      return { success: true }
+      return { success: true, isPending: result.user.approvalStatus === "pending" }
     }
     return { success: false, error: result.error ?? "Login failed" }
   }, [])
@@ -62,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await performSignUp(input)
     if (result.success && result.user) {
       setUser(result.user)
-      return { success: true }
+      return { success: true, isPending: result.user.approvalStatus === "pending" }
     }
     return { success: false, error: result.error ?? "Sign up failed" }
   }, [])
@@ -82,17 +84,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user]
   )
 
+  const isPending = user?.approvalStatus === "pending"
+  const isApproved = !!user && user.approvalStatus !== "pending" && user.approvalStatus !== "rejected"
+
   const value = useMemo(
     () => ({
       user,
       isLoading,
       isAuthenticated: !!user,
+      isApproved,
+      isPending,
       login,
       signUp,
       logout,
       updatePhone,
     }),
-    [user, isLoading, login, signUp, logout, updatePhone]
+    [user, isLoading, isApproved, isPending, login, signUp, logout, updatePhone]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -11,6 +11,8 @@ import { getRememberedEmail } from "@/lib/auth/remember-me"
 type FormErrors = {
   firstName?: string
   lastName?: string
+  usn?: string
+  phone?: string
   email?: string
   password?: string
   confirmPassword?: string
@@ -39,10 +41,18 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+function isValidUsn(usn: string): boolean {
+  return /^[A-Za-z0-9]{14}$/.test(usn.trim())
+}
+
+function isValidPhone(phone: string): boolean {
+  return /^\d{10}$/.test(phone.trim())
+}
+
 function AuthPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { signUp, login, isAuthenticated, isLoading: authLoading } = useAuth()
+  const { signUp, login, isAuthenticated, isApproved, isPending, isLoading: authLoading } = useAuth()
 
   const redirectTo = searchParams.get("redirect") || "/marketplace"
   const initialMode = searchParams.get("mode")
@@ -58,6 +68,8 @@ function AuthPageContent() {
 
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
+  const [usn, setUsn] = useState("")
+  const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -67,6 +79,8 @@ function AuthPageContent() {
 
   const firstNameRef = useRef<HTMLInputElement>(null)
   const lastNameRef = useRef<HTMLInputElement>(null)
+  const usnRef = useRef<HTMLInputElement>(null)
+  const phoneRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
   const confirmPasswordRef = useRef<HTMLInputElement>(null)
@@ -107,18 +121,30 @@ function AuthPageContent() {
     return (
       firstName.trim() &&
       lastName.trim() &&
+      isValidUsn(usn) &&
+      isValidPhone(phone) &&
       email.trim() &&
       password.trim() &&
       confirmPassword.trim() &&
       agreedToTerms
     )
-  }, [isSignUp, firstName, lastName, email, password, confirmPassword, agreedToTerms])
+  }, [isSignUp, firstName, lastName, usn, phone, email, password, confirmPassword, agreedToTerms])
 
   const validateSignUpForm = useCallback((): FormErrors => {
     const nextErrors: FormErrors = {}
 
     if (!firstName.trim()) nextErrors.firstName = "First name is required"
     if (!lastName.trim()) nextErrors.lastName = "Last name is required"
+    if (!usn.trim()) {
+      nextErrors.usn = "USN is required"
+    } else if (!isValidUsn(usn)) {
+      nextErrors.usn = "USN must be exactly 14 alphanumeric characters"
+    }
+    if (!phone.trim()) {
+      nextErrors.phone = "Phone number is required"
+    } else if (!isValidPhone(phone)) {
+      nextErrors.phone = "Phone number must be exactly 10 digits"
+    }
     if (!email.trim()) {
       nextErrors.email = "Please enter a valid email address"
     } else if (!isValidEmail(email)) {
@@ -137,12 +163,14 @@ function AuthPageContent() {
     }
 
     return nextErrors
-  }, [firstName, lastName, email, password, confirmPassword, agreedToTerms])
+  }, [firstName, lastName, usn, phone, email, password, confirmPassword, agreedToTerms])
 
   const focusFirstInvalidField = useCallback((nextErrors: FormErrors) => {
     const fieldOrder: { key: keyof FormErrors; ref: React.RefObject<HTMLElement | null> }[] = [
       { key: "firstName", ref: firstNameRef },
       { key: "lastName", ref: lastNameRef },
+      { key: "usn", ref: usnRef },
+      { key: "phone", ref: phoneRef },
       { key: "email", ref: emailRef },
       { key: "password", ref: passwordRef },
       { key: "confirmPassword", ref: confirmPasswordRef },
@@ -164,9 +192,13 @@ function AuthPageContent() {
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      router.replace(redirectTo)
+      if (isPending) {
+        router.replace("/pending-approval")
+      } else if (isApproved) {
+        router.replace(redirectTo)
+      }
     }
-  }, [authLoading, isAuthenticated, redirectTo, router])
+  }, [authLoading, isAuthenticated, isPending, isApproved, redirectTo, router])
 
   useEffect(() => {
     const rememberedEmail = getRememberedEmail()
@@ -218,7 +250,9 @@ function AuthPageContent() {
       const result = await login({ email, password, rememberMe })
       if (result.success) {
         setButtonState("success")
-        setTimeout(() => router.push(redirectTo), 800)
+        setTimeout(() => {
+          router.push(result.isPending ? "/pending-approval" : redirectTo)
+        }, 800)
       } else {
         setButtonState("default")
         setErrors({ email: result.error ?? "Login failed" })
@@ -235,10 +269,10 @@ function AuthPageContent() {
     }
 
     setButtonState("loading")
-    const result = await signUp({ firstName, lastName, email, password })
+    const result = await signUp({ firstName, lastName, email, password, usn, phone })
     if (result.success) {
       setButtonState("success")
-      setTimeout(() => router.push(redirectTo), 1200)
+      setTimeout(() => router.push("/pending-approval"), 1200)
     } else {
       setButtonState("default")
       setErrors({ email: result.error ?? "Sign up failed" })
@@ -438,6 +472,65 @@ function AuthPageContent() {
                     {errors.lastName && (
                       <p id="lastName-error" className="text-red-400/90 text-xs pl-1 error-message-enter">
                         {errors.lastName}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* USN & Phone — sign up only */}
+            <div
+              className={`grid transition-all duration-400 ease-out overflow-hidden ${
+                isSignUp ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+              }`}
+            >
+              <div className="overflow-hidden">
+                <div
+                  className={`grid grid-cols-1 sm:grid-cols-2 gap-3 pb-1 transition-all duration-500 delay-[425ms] ${
+                    mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <input
+                      ref={usnRef}
+                      type="text"
+                      placeholder="USN (14 characters)"
+                      maxLength={14}
+                      value={usn}
+                      onChange={(e) => {
+                        setUsn(e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())
+                        clearFieldError("usn")
+                      }}
+                      className={inputClassName(!!errors.usn)}
+                      aria-invalid={!!errors.usn}
+                      aria-describedby={errors.usn ? "usn-error" : undefined}
+                    />
+                    {errors.usn && (
+                      <p id="usn-error" className="text-red-400/90 text-xs pl-1 error-message-enter">
+                        {errors.usn}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <input
+                      ref={phoneRef}
+                      type="tel"
+                      placeholder="Phone (10 digits)"
+                      inputMode="numeric"
+                      maxLength={10}
+                      value={phone}
+                      onChange={(e) => {
+                        setPhone(e.target.value.replace(/\D/g, ""))
+                        clearFieldError("phone")
+                      }}
+                      className={inputClassName(!!errors.phone)}
+                      aria-invalid={!!errors.phone}
+                      aria-describedby={errors.phone ? "phone-error" : undefined}
+                    />
+                    {errors.phone && (
+                      <p id="phone-error" className="text-red-400/90 text-xs pl-1 error-message-enter">
+                        {errors.phone}
                       </p>
                     )}
                   </div>
