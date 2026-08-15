@@ -106,6 +106,7 @@ export default function FoundItemDetailPage() {
               itemType="lost-found"
               itemTitle={item.title}
               otherPartyName={item.listerName}
+              otherPartyUserId={item.listerId}
             />
           )}
         </div>

@@ -12,6 +12,7 @@ interface ChatButtonProps {
   itemType: ChatItemType
   itemTitle: string
   otherPartyName: string
+  otherPartyUserId: string
   className?: string
   variant?: "default" | "compact"
 }
@@ -21,11 +22,12 @@ export function ChatButton({
   itemType,
   itemTitle,
   otherPartyName,
+  otherPartyUserId,
   className,
   variant = "default",
 }: ChatButtonProps) {
   const router = useRouter()
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
   const { openChat } = useChat()
 
   const handleClick = (e: React.MouseEvent) => {
@@ -41,8 +43,12 @@ export function ChatButton({
       return
     }
 
-    openChat({ itemId, itemType, itemTitle, otherPartyName })
+    if (user?.id === otherPartyUserId) return
+
+    openChat({ itemId, itemType, itemTitle, otherPartyName, otherPartyUserId })
   }
+
+  if (user?.id === otherPartyUserId) return null
 
   if (variant === "compact") {
     return (

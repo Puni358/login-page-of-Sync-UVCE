@@ -15,6 +15,7 @@ export interface ChatConversation {
   itemType: ChatItemType
   itemTitle: string
   otherPartyName: string
+  otherPartyUserId: string
   messages: ChatMessage[]
   unreadCount: number
   updatedAt: string
@@ -25,4 +26,5 @@ export interface OpenChatParams {
   itemType: ChatItemType
   itemTitle: string
   otherPartyName: string
+  otherPartyUserId: string
 }

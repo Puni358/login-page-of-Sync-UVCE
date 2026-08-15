@@ -105,8 +105,8 @@ export default function MarketplacePage() {
         ) : products.length === 0 ? (
           <EmptyState
             icon={ShoppingBag}
-            title="No listings yet in this category"
-            description="Check back later or list something you no longer need."
+            title="No listings yet"
+            description="Be the first to list something on the campus marketplace."
             action={
               isAuthenticated ? (
                 <Link

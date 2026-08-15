@@ -6,39 +6,50 @@ export type ProductCategory =
 
 export type ProductCondition = "excellent" | "good" | "moderate" | "fair" | "needs-repair"
 
-export interface Seller {
-  id: string
-  name: string
-  email: string
-  phone: string
-}
-
 export interface Product {
   id: string
   title: string
   description: string
-  category: ProductCategory
-  condition: ProductCondition
+  price: number
+  location: string
+  imageUrl: string | null
   photos: string[]
   sellerId: string
   sellerName: string
   sellerEmail: string
   sellerPhone: string
   createdAt: string
-  updatedAt: string
+  category?: ProductCategory
+  condition?: ProductCondition
 }
 
 export interface CreateProductInput {
   title: string
   description: string
-  category: ProductCategory
-  condition: ProductCondition
-  photos: string[]
-  sellerEmail: string
-  sellerPhone: string
+  price: number
+  location: string
+  imageUrl: string | null
 }
 
 export interface ProductFilters {
   category?: ProductCategory | "all"
   search?: string
+}
+
+export interface ItemRow {
+  id: string
+  user_id: string
+  type: string
+  title: string
+  description: string
+  price: number
+  image_url: string | null
+  location: string | null
+  status: string
+  created_at: string
+  profiles: {
+    full_name: string | null
+    email: string | null
+    phone_number: string | null
+  } | null
 }

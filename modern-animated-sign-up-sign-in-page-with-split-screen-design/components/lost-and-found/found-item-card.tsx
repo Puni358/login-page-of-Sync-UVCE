@@ -51,6 +51,7 @@ export function FoundItemCard({ item }: FoundItemCardProps) {
           itemType="lost-found"
           itemTitle={item.title}
           otherPartyName={item.listerName}
+          otherPartyUserId={item.listerId}
           variant="compact"
           className="w-full justify-center py-2"
         />

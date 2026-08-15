@@ -1,7 +1,7 @@
 import Link from "next/link"
-import { ArrowRight } from "lucide-react"
+import { ArrowRight, MapPin } from "lucide-react"
 import type { Product } from "@/lib/marketplace/types"
-import { getCategoryLabel, formatCondition, formatDate } from "@/lib/marketplace/utils"
+import { formatDate, formatPrice } from "@/lib/marketplace/utils"
 import { CategoryIcon } from "@/components/marketplace/category-icon"
 import { ChatButton } from "@/components/chat/chat-button"
 
@@ -25,12 +25,15 @@ export function ProductCard({ product }: ProductCardProps) {
             />
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-purple-400/60">
-              <CategoryIcon category={product.category} className="w-10 h-10" />
-              <span className="text-xs text-white/30">{getCategoryLabel(product.category)}</span>
+              {product.category ? (
+                <CategoryIcon category={product.category} className="w-10 h-10" />
+              ) : (
+                <span className="text-2xl">📦</span>
+              )}
             </div>
           )}
           <div className="absolute left-3 top-3 rounded-lg bg-black/50 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-purple-300 backdrop-blur-sm">
-            {getCategoryLabel(product.category)}
+            {formatPrice(product.price)}
           </div>
         </div>
 
@@ -40,8 +43,9 @@ export function ProductCard({ product }: ProductCardProps) {
           </h3>
           <p className="mt-1 line-clamp-2 text-sm text-white/45">{product.description}</p>
           <div className="mt-auto flex items-center justify-between pt-4">
-            <span className="rounded-md bg-white/5 px-2 py-1 text-xs text-white/50">
-              {formatCondition(product.condition)}
+            <span className="flex items-center gap-1 rounded-md bg-white/5 px-2 py-1 text-xs text-white/50">
+              <MapPin className="h-3 w-3" />
+              <span className="line-clamp-1">{product.location}</span>
             </span>
             <span className="text-xs text-white/30">{formatDate(product.createdAt)}</span>
           </div>
@@ -57,6 +61,7 @@ export function ProductCard({ product }: ProductCardProps) {
           itemType="marketplace"
           itemTitle={product.title}
           otherPartyName={product.sellerName}
+          otherPartyUserId={product.sellerId}
           variant="compact"
           className="w-full justify-center py-2"
         />

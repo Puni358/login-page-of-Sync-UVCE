@@ -2,17 +2,11 @@ import type { ChatConversation, ChatMessage, OpenChatParams } from "./types"
 
 const STORAGE_KEY = "sync_chat_conversations"
 
-const DUMMY_MESSAGES: Omit<ChatMessage, "id" | "createdAt">[] = [
-  { body: "Hi! Is this still available?", senderId: "other", senderName: "Student", isOwn: false },
-  { body: "Yes, it is. When would you like to pick it up?", senderId: "me", senderName: "You", isOwn: true },
-]
-
 function readConversations(): ChatConversation[] {
   if (typeof window === "undefined") return []
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw) as ChatConversation[]
-    return seedDummyConversations()
+    return raw ? (JSON.parse(raw) as ChatConversation[]) : []
   } catch {
     return []
   }
@@ -25,76 +19,6 @@ function writeConversations(conversations: ChatConversation[]): void {
 
 function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-}
-
-function seedDummyConversations(): ChatConversation[] {
-  const now = Date.now()
-  const seeded: ChatConversation[] = [
-    {
-      id: "conv_demo_1",
-      itemId: "demo",
-      itemType: "marketplace",
-      itemTitle: "Engineering Physics Textbook",
-      otherPartyName: "Rahul K.",
-      unreadCount: 1,
-      updatedAt: new Date(now - 3600000).toISOString(),
-      messages: [
-        {
-          id: "msg_1",
-          body: "Hey, is the book still available?",
-          senderId: "other",
-          senderName: "Rahul K.",
-          isOwn: false,
-          createdAt: new Date(now - 7200000).toISOString(),
-        },
-        {
-          id: "msg_2",
-          body: "Yes! DM me when you want to collect it.",
-          senderId: "me",
-          senderName: "You",
-          isOwn: true,
-          createdAt: new Date(now - 5400000).toISOString(),
-        },
-        {
-          id: "msg_3",
-          body: "Can we meet near the library tomorrow?",
-          senderId: "other",
-          senderName: "Rahul K.",
-          isOwn: false,
-          createdAt: new Date(now - 3600000).toISOString(),
-        },
-      ],
-    },
-    {
-      id: "conv_demo_2",
-      itemId: "demo2",
-      itemType: "lost-found",
-      itemTitle: "Black wallet found",
-      otherPartyName: "Priya S.",
-      unreadCount: 0,
-      updatedAt: new Date(now - 86400000).toISOString(),
-      messages: [
-        {
-          id: "msg_4",
-          body: "I think this might be mine. Can you describe the contents?",
-          senderId: "me",
-          senderName: "You",
-          isOwn: true,
-          createdAt: new Date(now - 90000000).toISOString(),
-        },
-        {
-          id: "msg_5",
-          body: "It has a student ID and a few cards inside.",
-          senderId: "other",
-          senderName: "Priya S.",
-          isOwn: false,
-          createdAt: new Date(now - 86400000).toISOString(),
-        },
-      ],
-    },
-  ]
-  writeConversations(seeded)
-  return seeded
 }
 
 export function getConversations(): ChatConversation[] {
@@ -110,7 +34,10 @@ export function getTotalUnreadCount(): number {
 export function getOrCreateConversation(params: OpenChatParams): ChatConversation {
   const conversations = readConversations()
   const existing = conversations.find(
-    (c) => c.itemId === params.itemId && c.itemType === params.itemType
+    (c) =>
+      c.itemId === params.itemId &&
+      c.itemType === params.itemType &&
+      c.otherPartyUserId === params.otherPartyUserId
   )
   if (existing) return existing
 
@@ -121,14 +48,10 @@ export function getOrCreateConversation(params: OpenChatParams): ChatConversatio
     itemType: params.itemType,
     itemTitle: params.itemTitle,
     otherPartyName: params.otherPartyName,
+    otherPartyUserId: params.otherPartyUserId,
     unreadCount: 0,
     updatedAt: now,
-    messages: DUMMY_MESSAGES.map((m, i) => ({
-      ...m,
-      id: generateId("msg"),
-      senderName: m.isOwn ? "You" : params.otherPartyName,
-      createdAt: new Date(Date.now() - (DUMMY_MESSAGES.length - i) * 60000).toISOString(),
-    })),
+    messages: [],
   }
   conversations.unshift(newConv)
   writeConversations(conversations)
