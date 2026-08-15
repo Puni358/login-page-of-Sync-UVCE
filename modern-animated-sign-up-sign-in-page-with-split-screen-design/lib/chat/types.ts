@@ -6,6 +6,7 @@ export interface ChatMessage {
   senderId: string
   senderName: string
   isOwn: boolean
+  read: boolean
   createdAt: string
 }
 

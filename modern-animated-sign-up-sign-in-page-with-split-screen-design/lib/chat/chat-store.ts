@@ -6,7 +6,20 @@ function readConversations(): ChatConversation[] {
   if (typeof window === "undefined") return []
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as ChatConversation[]) : []
+    if (!raw) return []
+    const conversations = JSON.parse(raw) as ChatConversation[]
+    return conversations.map((conv) => {
+      const messages = (conv.messages || []).map((m) => ({
+        ...m,
+        read: typeof m.read === "boolean" ? m.read : false,
+      }))
+      const unreadCount = messages.filter((m) => !m.isOwn && !m.read).length
+      return {
+        ...conv,
+        messages,
+        unreadCount,
+      }
+    })
   } catch {
     return []
   }
@@ -28,7 +41,10 @@ export function getConversations(): ChatConversation[] {
 }
 
 export function getTotalUnreadCount(): number {
-  return readConversations().reduce((sum, c) => sum + c.unreadCount, 0)
+  return readConversations().reduce(
+    (sum, c) => sum + c.messages.filter((m) => !m.isOwn && !m.read).length,
+    0
+  )
 }
 
 export function getOrCreateConversation(params: OpenChatParams): ChatConversation {
@@ -73,6 +89,7 @@ export function sendMessage(conversationId: string, body: string): ChatMessage |
     senderId: "me",
     senderName: "You",
     isOwn: true,
+    read: false,
     createdAt: new Date().toISOString(),
   }
 
@@ -86,6 +103,23 @@ export function markConversationRead(conversationId: string): void {
   const conversations = readConversations()
   const index = conversations.findIndex((c) => c.id === conversationId)
   if (index === -1) return
+
+  conversations[index].messages.forEach((msg) => {
+    if (!msg.isOwn) {
+      msg.read = true
+    }
+  })
   conversations[index].unreadCount = 0
   writeConversations(conversations)
+}
+
+export function markMessageAsRead(conversationId: string, messageId: string): void {
+  const conversations = readConversations()
+  const index = conversations.findIndex((c) => c.id === conversationId)
+  if (index === -1) return
+  const msg = conversations[index].messages.find((m) => m.id === messageId)
+  if (msg) {
+    msg.read = true
+    writeConversations(conversations)
+  }
 }

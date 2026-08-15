@@ -33,9 +33,9 @@ export default function ListFoundItemPage() {
         <ArrowLeft className="h-4 w-4" /> Back
       </Link>
       <div>
-        <h1 className="text-2xl font-bold text-white">List a Found Item</h1>
+        <h1 className="text-2xl font-bold text-white">Report Lost or Found Item</h1>
         <p className="mt-1 text-sm text-white/50">
-          Help reunite lost items with their owners. Add photos and where/when you found it.
+          Help reunite items with their owners or report something you have lost on campus.
         </p>
       </div>
       <div className="rounded-2xl border border-white/5 bg-[#12121a] p-6 sm:p-8">

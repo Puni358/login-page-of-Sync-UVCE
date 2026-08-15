@@ -2,7 +2,6 @@
 
 import { MessageCircle } from "lucide-react"
 import type { ChatConversation } from "@/lib/chat/types"
-import { cn } from "@/lib/utils"
 
 interface ChatListProps {
   conversations: ChatConversation[]
@@ -25,40 +24,52 @@ export function ChatList({ conversations, onSelect }: ChatListProps) {
   }
 
   return (
-    <ul className="flex-1 overflow-y-auto">
-      {conversations.map((conv) => (
-        <li key={conv.id}>
-          <button
-            type="button"
-            onClick={() => onSelect(conv.id)}
-            className="flex w-full items-start gap-3 border-b border-white/5 px-4 py-3 text-left transition-colors hover:bg-white/5"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple-500/20 text-sm font-semibold text-purple-300">
-              {conv.otherPartyName.charAt(0)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-medium text-white">{conv.otherPartyName}</p>
-                <span className="shrink-0 text-[10px] text-white/30">
-                  {new Date(conv.updatedAt).toLocaleDateString("en-IN", {
-                    day: "numeric",
-                    month: "short",
-                  })}
-                </span>
+    <ul className="flex-1 overflow-y-auto divide-y divide-white/5">
+      {conversations.map((conv) => {
+        const lastMsg = conv.messages[conv.messages.length - 1]
+        const hasUnread = conv.unreadCount > 0
+
+        return (
+          <li key={conv.id}>
+            <button
+              type="button"
+              onClick={() => onSelect(conv.id)}
+              className="flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-white/5 group"
+            >
+              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple-500/20 text-sm font-semibold text-purple-300 border border-purple-500/30">
+                {conv.otherPartyName.charAt(0).toUpperCase()}
+                {hasUnread && (
+                  <span className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full bg-red-500 ring-2 ring-[#12121a]" />
+                )}
               </div>
-              <p className="truncate text-xs text-purple-400/70">{conv.itemTitle}</p>
-              <p className="mt-0.5 truncate text-xs text-white/40">
-                {conv.messages[conv.messages.length - 1]?.body ?? "No messages"}
-              </p>
-            </div>
-            {conv.unreadCount > 0 && (
-              <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-purple-500 px-1.5 text-[10px] font-bold text-white">
-                {conv.unreadCount}
-              </span>
-            )}
-          </button>
-        </li>
-      ))}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-sm font-medium text-white group-hover:text-purple-300 transition-colors">
+                    {conv.otherPartyName}
+                  </p>
+                  <span className="shrink-0 text-[10px] text-white/30">
+                    {new Date(conv.updatedAt).toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                    })}
+                  </span>
+                </div>
+                <p className="truncate text-xs font-medium text-purple-400/80">{conv.itemTitle}</p>
+                <p className="mt-0.5 truncate text-xs text-white/40">
+                  {lastMsg?.body ?? "No messages"}
+                </p>
+              </div>
+
+              {/* Requirement 3: Red unread badge on chat/inbox entry */}
+              {hasUnread && (
+                <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white shadow-sm shadow-red-500/30">
+                  {conv.unreadCount > 9 ? "9+" : conv.unreadCount}
+                </span>
+              )}
+            </button>
+          </li>
+        )
+      })}
     </ul>
   )
 }
