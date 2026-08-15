@@ -14,6 +14,8 @@ import { CategoryIcon } from "@/components/marketplace/category-icon"
 import { getCategoryLabel } from "@/lib/marketplace/utils"
 import { useAuth } from "@/lib/auth/auth-context"
 
+import { cn } from "@/lib/utils"
+
 export default function MarketplacePage() {
   const { isAuthenticated } = useAuth()
   const [products, setProducts] = useState<Product[]>([])
@@ -55,22 +57,37 @@ export default function MarketplacePage() {
       <section>
         <h2 className="mb-4 text-lg font-semibold text-white">Categories</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {MARKETPLACE_CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setCategory(cat.id)}
-              className="group flex flex-col items-start gap-3 rounded-2xl border border-white/5 bg-[#12121a] p-4 text-left transition-all hover:border-purple-500/25 hover:shadow-[0_4px_20px_rgba(168,85,247,0.1)]"
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/15 text-purple-400 transition-colors group-hover:bg-purple-500/25">
-                <CategoryIcon category={cat.id} />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-white">{cat.label}</p>
-                <p className="mt-0.5 text-xs text-white/40 line-clamp-2">{cat.description}</p>
-              </div>
-            </button>
-          ))}
+          {MARKETPLACE_CATEGORIES.map((cat) => {
+            const isSelected = category === cat.id
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setCategory(isSelected ? "all" : cat.id)}
+                className={cn(
+                  "group flex flex-col items-start gap-3 rounded-2xl border p-4 text-left transition-all",
+                  isSelected
+                    ? "border-purple-500/80 bg-purple-500/10 shadow-[0_4px_20px_rgba(168,85,247,0.2)]"
+                    : "border-white/5 bg-[#12121a] hover:border-purple-500/25 hover:shadow-[0_4px_20px_rgba(168,85,247,0.1)]"
+                )}
+              >
+                <div
+                  className={cn(
+                    "flex h-10 w-10 items-center justify-center rounded-xl transition-colors",
+                    isSelected
+                      ? "bg-purple-500 text-white"
+                      : "bg-purple-500/15 text-purple-400 group-hover:bg-purple-500/25"
+                  )}
+                >
+                  <CategoryIcon category={cat.id} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">{cat.label}</p>
+                  <p className="mt-0.5 text-xs text-white/40 line-clamp-2">{cat.description}</p>
+                </div>
+              </button>
+            )
+          })}
         </div>
       </section>
 

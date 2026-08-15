@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation"
 import { ImagePlus, Loader2, MapPin, X, Mail, Phone } from "lucide-react"
 import { useAuth } from "@/lib/auth/auth-context"
 import { createProduct } from "@/lib/marketplace/product-service"
-import { MAX_PHOTO_SIZE_MB } from "@/lib/marketplace/constants"
+import { FORM_CATEGORY_OPTIONS, MAX_PHOTO_SIZE_MB } from "@/lib/marketplace/constants"
+import type { ProductCategory } from "@/lib/marketplace/types"
 import { cn } from "@/lib/utils"
 
 type FormErrors = Partial<Record<string, string>>
@@ -27,6 +28,7 @@ export function SellForm() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [title, setTitle] = useState("")
+  const [category, setCategory] = useState<ProductCategory>("general")
   const [description, setDescription] = useState("")
   const [price, setPrice] = useState("")
   const [location, setLocation] = useState("")
@@ -46,6 +48,7 @@ export function SellForm() {
   const validate = (): FormErrors => {
     const next: FormErrors = {}
     if (!title.trim()) next.title = "Title is required"
+    if (!category) next.category = "Category is required"
     if (!description.trim()) next.description = "Description is required"
     if (!price.trim()) next.price = "Price is required"
     else if (Number.isNaN(Number(price)) || Number(price) <= 0)
@@ -133,6 +136,7 @@ export function SellForm() {
       const product = await createProduct(
         {
           title,
+          category: category as ProductCategory,
           description,
           price: Number(price),
           location,
@@ -233,6 +237,29 @@ export function SellForm() {
           className={inputClass(!!errors.title)}
         />
         {errors.title && <p className="text-xs text-red-400">{errors.title}</p>}
+      </div>
+
+      {/* Category */}
+      <div className="space-y-1.5">
+        <label htmlFor="category" className="text-sm font-medium text-white/80">
+          Category
+        </label>
+        <select
+          id="category"
+          value={category}
+          onChange={(e) => {
+            setCategory(e.target.value as ProductCategory)
+            setErrors((p) => ({ ...p, category: undefined }))
+          }}
+          className={cn(inputClass(!!errors.category), "cursor-pointer")}
+        >
+          {FORM_CATEGORY_OPTIONS.map((cat) => (
+            <option key={cat.id} value={cat.id} className="bg-[#1a1a26] text-white">
+              {cat.label}
+            </option>
+          ))}
+        </select>
+        {errors.category && <p className="text-xs text-red-400">{errors.category}</p>}
       </div>
 
       {/* Description */}

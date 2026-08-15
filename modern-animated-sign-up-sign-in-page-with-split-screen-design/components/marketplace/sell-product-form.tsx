@@ -45,7 +45,7 @@ export function SellProductForm() {
 
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [category, setCategory] = useState<ProductCategory | "">("")
+  const [category, setCategory] = useState<ProductCategory>("general")
   const [condition, setCondition] = useState<ProductCondition | "">("")
   const [email, setEmail] = useState(user?.email ?? "")
   const [phone, setPhone] = useState(user?.phone ?? "")

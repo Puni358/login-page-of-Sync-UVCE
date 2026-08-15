@@ -38,7 +38,15 @@ export const PRODUCT_CONDITIONS: {
   { value: "needs-repair", label: "Needs repair" },
 ]
 
-export const ALLOWED_CATEGORIES = MARKETPLACE_CATEGORIES.map((c) => c.id)
+export const FORM_CATEGORY_OPTIONS: {
+  id: ProductCategory
+  label: string
+}[] = [
+  { id: "general", label: "General" },
+  ...MARKETPLACE_CATEGORIES.map((c) => ({ id: c.id, label: c.label })),
+]
+
+export const ALLOWED_CATEGORIES = FORM_CATEGORY_OPTIONS.map((c) => c.id)
 
 export const MAX_PRODUCT_PHOTOS = 5
 export const MAX_PHOTO_SIZE_MB = 5

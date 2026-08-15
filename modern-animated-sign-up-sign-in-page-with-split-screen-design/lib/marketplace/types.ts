@@ -3,6 +3,7 @@ export type ProductCategory =
   | "lab-tools"
   | "calculators"
   | "small-electronics"
+  | "general"
 
 export type ProductCondition = "excellent" | "good" | "moderate" | "fair" | "needs-repair"
 
@@ -45,6 +46,7 @@ export interface ItemRow {
   id: string
   user_id: string
   type: string
+  category?: string | null
   title: string
   description: string
   price: number

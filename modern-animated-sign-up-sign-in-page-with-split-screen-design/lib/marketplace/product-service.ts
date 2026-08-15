@@ -5,6 +5,7 @@ const ITEM_SELECT = `
   id,
   user_id,
   type,
+  category,
   title,
   description,
   price,
@@ -44,6 +45,7 @@ function mapItemToProduct(row: ItemRow): Product {
     description: row.description,
     price: row.price,
     location: row.location ?? "",
+    category: (row.category as any) || undefined,
     imageUrl: photos[0] ?? mainImageUrl ?? null,
     photos,
     sellerId: row.user_id,
@@ -58,13 +60,7 @@ function applyClientFilters(products: Product[], filters?: ProductFilters): Prod
   let result = products
 
   if (filters?.category && filters.category !== "all") {
-    const label = filters.category.replace(/-/g, " ")
-    result = result.filter(
-      (p) =>
-        p.title.toLowerCase().includes(label) ||
-        p.description.toLowerCase().includes(label) ||
-        p.category === filters.category
-    )
+    result = result.filter((p) => p.category === filters.category)
   }
 
   if (filters?.search?.trim()) {
@@ -81,19 +77,31 @@ function applyClientFilters(products: Product[], filters?: ProductFilters): Prod
 }
 
 export async function getProducts(filters?: ProductFilters): Promise<Product[]> {
-  let { data, error } = await supabase
+  let query = supabase
     .from("items")
     .select(ITEM_SELECT)
     .eq("type", "market")
     .order("created_at", { ascending: false })
 
+  if (filters?.category && filters.category !== "all") {
+    query = query.eq("category", filters.category)
+  }
+
+  let { data, error } = await query
+
   if (error) {
     console.error("Failed to fetch marketplace items with profile join, trying fallback:", error.message)
-    const fallback = await supabase
+    let fallbackQuery = supabase
       .from("items")
       .select("*")
       .eq("type", "market")
       .order("created_at", { ascending: false })
+
+    if (filters?.category && filters.category !== "all") {
+      fallbackQuery = fallbackQuery.eq("category", filters.category)
+    }
+
+    const fallback = await fallbackQuery
 
     if (fallback.error) {
       console.error("Failed to fetch marketplace items:", fallback.error.message)
@@ -187,6 +195,7 @@ export async function createProduct(
     .insert({
       user_id: userId,
       type: "market",
+      category: input.category || null,
       title: input.title.trim(),
       description: input.description.trim(),
       price: input.price,
@@ -205,6 +214,7 @@ export async function createProduct(
       .insert({
         user_id: userId,
         type: "market",
+        category: input.category || null,
         title: input.title.trim(),
         description: input.description.trim(),
         price: input.price,
