@@ -50,6 +50,7 @@ function isValidPhone(phone: string): boolean {
 }
 
 function AuthPageContent() {
+	
   const router = useRouter()
   const searchParams = useSearchParams()
   const { signUp, login, isAuthenticated, isApproved, isPending, isLoading: authLoading } = useAuth()
