@@ -18,6 +18,14 @@ export async function getSessionAuthUser(): Promise<AuthUser | null> {
 export async function performLogin(
   input: LoginInput
 ): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+  if (typeof window !== "undefined") {
+    if (input.rememberMe) {
+      localStorage.setItem("sync_remember_me_active", "true")
+    } else {
+      localStorage.removeItem("sync_remember_me_active")
+    }
+  }
+
   const { data, error } = await supabase.auth.signInWithPassword({
     email: input.email.trim(),
     password: input.password,
@@ -103,6 +111,9 @@ export async function performGoogleSignIn(): Promise<{ success: boolean; error?:
 }
 
 export async function performLogout(): Promise<void> {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("sync_remember_me_active")
+  }
   await supabase.auth.signOut()
   clearRememberToken()
 }

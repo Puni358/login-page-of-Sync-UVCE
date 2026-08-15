@@ -28,7 +28,12 @@ export interface CreateProductInput {
   description: string
   price: number
   location: string
-  imageUrl: string | null
+  imageUrl?: string | null
+  photos?: string[]
+  sellerEmail?: string
+  sellerPhone?: string
+  category?: ProductCategory
+  condition?: ProductCondition
 }
 
 export interface ProductFilters {
@@ -47,9 +52,16 @@ export interface ItemRow {
   location: string | null
   status: string
   created_at: string
+  item_images?: Array<{
+    id?: string
+    image_url?: string
+    url?: string
+    image?: string
+  }>
   profiles: {
     full_name: string | null
     email: string | null
     phone_number: string | null
   } | null
 }
+

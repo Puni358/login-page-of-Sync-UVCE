@@ -1,14 +1,25 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ImagePlus, Loader2, MapPin, X } from "lucide-react"
+import { ImagePlus, Loader2, MapPin, X, Mail, Phone } from "lucide-react"
 import { useAuth } from "@/lib/auth/auth-context"
 import { createProduct } from "@/lib/marketplace/product-service"
 import { MAX_PHOTO_SIZE_MB } from "@/lib/marketplace/constants"
 import { cn } from "@/lib/utils"
 
 type FormErrors = Partial<Record<string, string>>
+
+const MAX_PHOTOS = 5
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+}
+
+function isValidPhone(phone: string): boolean {
+  const digitsOnly = phone.replace(/\D/g, "")
+  return digitsOnly.length === 10
+}
 
 export function SellForm() {
   const router = useRouter()
@@ -19,9 +30,18 @@ export function SellForm() {
   const [description, setDescription] = useState("")
   const [price, setPrice] = useState("")
   const [location, setLocation] = useState("")
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [email, setEmail] = useState("")
+  const [phone, setPhone] = useState("")
+  const [photos, setPhotos] = useState<string[]>([])
   const [errors, setErrors] = useState<FormErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (user) {
+      if (user.email && !email) setEmail(user.email)
+      if (user.phone && !phone) setPhone(user.phone)
+    }
+  }, [user, email, phone])
 
   const validate = (): FormErrors => {
     const next: FormErrors = {}
@@ -31,43 +51,75 @@ export function SellForm() {
     else if (Number.isNaN(Number(price)) || Number(price) <= 0)
       next.price = "Enter a valid price greater than 0"
     if (!location.trim()) next.location = "Location is required"
-    if (!imageUrl) next.image = "Add a product photo"
+    
+    if (!email.trim()) {
+      next.email = "Email address is required"
+    } else if (!isValidEmail(email)) {
+      next.email = "Please enter a valid email address (e.g. user@domain.com)"
+    }
+
+    if (!phone.trim()) {
+      next.phone = "Phone number is required"
+    } else if (!isValidPhone(phone)) {
+      next.phone = "Please enter a valid 10-digit phone number"
+    }
+
+    if (photos.length === 0) {
+      next.image = "At least one product photo is required"
+    }
+
     return next
   }
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const selectedFiles = Array.from(e.target.files || [])
+    if (selectedFiles.length === 0) return
 
-    if (!file.type.startsWith("image/")) {
-      setErrors((prev) => ({ ...prev, image: "Only image files are allowed" }))
-      return
-    }
-    if (file.size > MAX_PHOTO_SIZE_MB * 1024 * 1024) {
-      setErrors((prev) => ({
-        ...prev,
-        image: `Photo must be under ${MAX_PHOTO_SIZE_MB}MB`,
-      }))
+    const remainingSlots = MAX_PHOTOS - photos.length
+    if (remainingSlots <= 0) {
+      setErrors((prev) => ({ ...prev, image: `Maximum ${MAX_PHOTOS} photos allowed` }))
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setImageUrl(reader.result)
-        setErrors((prev) => {
-          const next = { ...prev }
-          delete next.image
-          return next
-        })
+    const filesToProcess = selectedFiles.slice(0, remainingSlots)
+
+    filesToProcess.forEach((file) => {
+      if (!file.type.startsWith("image/")) {
+        setErrors((prev) => ({ ...prev, image: "Only image files are allowed" }))
+        return
       }
-    }
-    reader.readAsDataURL(file)
+      if (file.size > MAX_PHOTO_SIZE_MB * 1024 * 1024) {
+        setErrors((prev) => ({
+          ...prev,
+          image: `Each photo must be under ${MAX_PHOTO_SIZE_MB}MB`,
+        }))
+        return
+      }
+
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          const newPhotoUrl = reader.result
+          setPhotos((prev) => {
+            if (prev.length >= MAX_PHOTOS) return prev
+            return [...prev, newPhotoUrl]
+          })
+          setErrors((prev) => {
+            const next = { ...prev }
+            delete next.image
+            return next
+          })
+        }
+      }
+      reader.readAsDataURL(file)
+    })
 
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  const removePhoto = () => setImageUrl(null)
+  const removePhoto = (indexToRemove: number) => {
+    setPhotos((prev) => prev.filter((_, idx) => idx !== indexToRemove))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -84,7 +136,10 @@ export function SellForm() {
           description,
           price: Number(price),
           location,
-          imageUrl,
+          imageUrl: photos[0] ?? null,
+          photos,
+          sellerEmail: email.trim(),
+          sellerPhone: phone.trim(),
         },
         user.id
       )
@@ -111,38 +166,51 @@ export function SellForm() {
         </p>
       )}
 
-      {/* Photo */}
+      {/* Photos (up to 5) */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-white/80">Product Photo</label>
-        <div className="flex gap-3">
-          {imageUrl ? (
-            <div className="relative aspect-square w-40 overflow-hidden rounded-xl border border-white/5">
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium text-white/80">Product Photos</label>
+          <span className="text-xs text-white/40">{photos.length} of {MAX_PHOTOS} photos</span>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          {photos.map((photoUrl, index) => (
+            <div key={index} className="relative aspect-square w-28 overflow-hidden rounded-xl border border-white/10 group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={imageUrl} alt="Product preview" className="h-full w-full object-cover" />
+              <img src={photoUrl} alt={`Product preview ${index + 1}`} className="h-full w-full object-cover" />
               <button
                 type="button"
-                onClick={removePhoto}
-                className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-red-500/80"
-                aria-label="Remove photo"
+                onClick={() => removePhoto(index)}
+                className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-red-500/90"
+                aria-label={`Remove photo ${index + 1}`}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
+              {index === 0 && (
+                <span className="absolute bottom-1 left-1 rounded bg-purple-600/80 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+                  Cover
+                </span>
+              )}
             </div>
-          ) : (
+          ))}
+
+          {photos.length < MAX_PHOTOS && (
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex aspect-square w-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-[#1a1a26] text-white/40 transition-all hover:border-purple-500/40 hover:text-purple-400"
+              className="flex aspect-square w-28 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-white/15 bg-[#1a1a26] text-white/40 transition-all hover:border-purple-500/50 hover:text-purple-400"
             >
-              <ImagePlus className="h-6 w-6" />
-              <span className="text-xs">Add photo</span>
+              <ImagePlus className="h-5 w-5" />
+              <span className="text-[11px]">Add photo</span>
             </button>
           )}
         </div>
+
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={handlePhotoSelect}
         />
@@ -226,6 +294,57 @@ export function SellForm() {
             />
           </div>
           {errors.location && <p className="text-xs text-red-400">{errors.location}</p>}
+        </div>
+      </div>
+
+      {/* Seller Contact Information (Email & Phone, Autofilled & Editable with Validation) */}
+      <div className="rounded-2xl border border-white/5 bg-[#12121c] p-4 space-y-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-purple-400/90">
+          Seller Contact Info
+        </h3>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label htmlFor="email" className="text-sm font-medium text-white/80">
+              Email Address
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  setErrors((p) => ({ ...p, email: undefined }))
+                }}
+                placeholder="name@student.uvce.ac.in"
+                className={cn(inputClass(!!errors.email), "pl-10")}
+              />
+            </div>
+            {errors.email && <p className="text-xs text-red-400">{errors.email}</p>}
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="phone" className="text-sm font-medium text-white/80">
+              Phone Number
+            </label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+              <input
+                id="phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => {
+                  setPhone(e.target.value)
+                  setErrors((p) => ({ ...p, phone: undefined }))
+                }}
+                placeholder="9876543210"
+                className={cn(inputClass(!!errors.phone), "pl-10")}
+              />
+            </div>
+            {errors.phone && <p className="text-xs text-red-400">{errors.phone}</p>}
+          </div>
         </div>
       </div>
 

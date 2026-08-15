@@ -25,7 +25,8 @@ function isValidEmail(email: string): boolean {
 }
 
 function isValidPhone(phone: string): boolean {
-  return /^[\d\s+\-()]{10,15}$/.test(phone.trim())
+  const digitsOnly = phone.replace(/\D/g, "")
+  return digitsOnly.length === 10
 }
 
 async function readFileAsDataUrl(file: File): Promise<string> {
@@ -110,7 +111,7 @@ export function SellProductForm() {
     }
     if (!condition) next.condition = "Select item condition"
     if (!email.trim() || !isValidEmail(email)) next.email = "Enter a valid email address"
-    if (!phone.trim() || !isValidPhone(phone)) next.phone = "Enter a valid phone number"
+    if (!phone.trim() || !isValidPhone(phone)) next.phone = "Enter a valid 10-digit phone number"
     if (photos.length === 0) next.photos = "Add at least one product photo"
     return next
   }

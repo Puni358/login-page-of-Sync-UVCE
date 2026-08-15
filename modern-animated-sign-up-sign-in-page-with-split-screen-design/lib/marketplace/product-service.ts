@@ -12,6 +12,10 @@ const ITEM_SELECT = `
   location,
   status,
   created_at,
+  item_images (
+    id,
+    image_url
+  ),
   profiles:user_id (
     full_name,
     email,
@@ -22,7 +26,17 @@ const ITEM_SELECT = `
 function mapItemToProduct(row: ItemRow): Product {
   const rawProfile = row.profiles
   const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile
-  const imageUrl = row.image_url
+  const mainImageUrl = row.image_url
+
+  let photos: string[] = []
+  if (row.item_images && Array.isArray(row.item_images) && row.item_images.length > 0) {
+    photos = row.item_images
+      .map((img) => img.image_url || img.url || img.image)
+      .filter((u): u is string => Boolean(u))
+  }
+  if (photos.length === 0 && mainImageUrl) {
+    photos = [mainImageUrl]
+  }
 
   return {
     id: row.id,
@@ -30,8 +44,8 @@ function mapItemToProduct(row: ItemRow): Product {
     description: row.description,
     price: row.price,
     location: row.location ?? "",
-    imageUrl,
-    photos: imageUrl ? [imageUrl] : [],
+    imageUrl: photos[0] ?? mainImageUrl ?? null,
+    photos,
     sellerId: row.user_id,
     sellerName: profile?.full_name?.trim() || "Seller",
     sellerEmail: profile?.email ?? "",
@@ -89,6 +103,27 @@ export async function getProducts(filters?: ProductFilters): Promise<Product[]> 
   }
 
   const products = ((data || []) as unknown as ItemRow[]).map(mapItemToProduct)
+
+  // Fetch item_images if they weren't included in the join
+  for (const product of products) {
+    if (product.photos.length === 0 || (product.photos.length === 1 && product.imageUrl)) {
+      const { data: imagesData } = await supabase
+        .from("item_images")
+        .select("image_url")
+        .eq("item_id", product.id)
+
+      if (imagesData && imagesData.length > 0) {
+        const fetchedPhotos = imagesData
+          .map((img: any) => img.image_url || img.url)
+          .filter(Boolean)
+        if (fetchedPhotos.length > 0) {
+          product.photos = fetchedPhotos
+          product.imageUrl = fetchedPhotos[0]
+        }
+      }
+    }
+  }
+
   return applyClientFilters(products, filters)
 }
 
@@ -117,13 +152,36 @@ export async function getProductById(id: string): Promise<Product | null> {
   }
 
   if (!data) return null
-  return mapItemToProduct(data as unknown as ItemRow)
+  const product = mapItemToProduct(data as unknown as ItemRow)
+
+  // Also query item_images table to ensure all photos (up to 5) are loaded
+  const { data: imagesData } = await supabase
+    .from("item_images")
+    .select("image_url")
+    .eq("item_id", id)
+
+  if (imagesData && imagesData.length > 0) {
+    const fetchedPhotos = imagesData
+      .map((img: any) => img.image_url || img.url)
+      .filter(Boolean)
+    if (fetchedPhotos.length > 0) {
+      product.photos = fetchedPhotos
+      product.imageUrl = fetchedPhotos[0]
+    }
+  }
+
+  return product
 }
 
 export async function createProduct(
   input: CreateProductInput,
   userId: string
 ): Promise<Product> {
+  const photos = input.photos && input.photos.length > 0
+    ? input.photos
+    : (input.imageUrl ? [input.imageUrl] : [])
+  const mainImage = photos[0] ?? null
+
   const { data, error } = await supabase
     .from("items")
     .insert({
@@ -132,13 +190,14 @@ export async function createProduct(
       title: input.title.trim(),
       description: input.description.trim(),
       price: input.price,
-      image_url: input.imageUrl,
+      image_url: mainImage,
       location: input.location.trim(),
       status: "active",
     })
     .select(ITEM_SELECT)
     .single()
 
+  let createdItem = data
   if (error) {
     console.error("Error creating product with profile join, trying fallback:", error.message)
     const { data: fallbackData, error: fallbackError } = await supabase
@@ -149,7 +208,7 @@ export async function createProduct(
         title: input.title.trim(),
         description: input.description.trim(),
         price: input.price,
-        image_url: input.imageUrl,
+        image_url: mainImage,
         location: input.location.trim(),
         status: "active",
       })
@@ -159,13 +218,44 @@ export async function createProduct(
     if (fallbackError || !fallbackData) {
       throw new Error(error.message || fallbackError?.message || "Failed to list item")
     }
-    return mapItemToProduct(fallbackData as unknown as ItemRow)
+    createdItem = fallbackData
   }
 
-  return mapItemToProduct(data as unknown as ItemRow)
+  const createdId = (createdItem as any).id
+
+  // Insert photos into item_images table
+  if (createdId && photos.length > 0) {
+    const imageRows = photos.map((photoUrl) => ({
+      item_id: createdId,
+      image_url: photoUrl,
+    }))
+    const { error: imgError } = await supabase.from("item_images").insert(imageRows)
+    if (imgError) {
+      console.warn("Could not insert into item_images:", imgError.message)
+    }
+  }
+
+  // Update profile phone & email if provided and changed
+  if (userId && (input.sellerPhone || input.sellerEmail)) {
+    const updatePayload: Record<string, string> = {}
+    if (input.sellerPhone) updatePayload.phone_number = input.sellerPhone.trim()
+    if (input.sellerEmail) updatePayload.email = input.sellerEmail.trim()
+    await supabase.from("profiles").update(updatePayload).eq("id", userId)
+  }
+
+  const product = mapItemToProduct(createdItem as unknown as ItemRow)
+  product.photos = photos
+  if (photos[0]) product.imageUrl = photos[0]
+  if (input.sellerEmail) product.sellerEmail = input.sellerEmail
+  if (input.sellerPhone) product.sellerPhone = input.sellerPhone
+
+  return product
 }
 
 export async function deleteProduct(id: string, userId: string): Promise<boolean> {
+  // Cascading delete for item_images first
+  await supabase.from("item_images").delete().eq("item_id", id)
+
   const { error, count } = await supabase
     .from("items")
     .delete({ count: "exact" })
@@ -181,3 +271,19 @@ export async function deleteProduct(id: string, userId: string): Promise<boolean
   return (count ?? 0) > 0
 }
 
+export async function adminDeleteProduct(id: string): Promise<boolean> {
+  // Cascading delete for item_images first
+  await supabase.from("item_images").delete().eq("item_id", id)
+
+  const { error, count } = await supabase
+    .from("items")
+    .delete({ count: "exact" })
+    .eq("id", id)
+
+  if (error) {
+    console.error("Failed to delete marketplace item as admin:", error.message)
+    return false
+  }
+
+  return (count ?? 0) > 0
+}
