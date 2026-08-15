@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { ZoomableImage } from "@/components/ui/lightbox-context"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, CheckCircle2, MapPin, Trash2, Loader2 } from "lucide-react"
@@ -19,7 +20,7 @@ import { useAuth } from "@/lib/auth/auth-context"
 export default function ProductDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const { isAuthenticated, user, isAdmin } = useAuth()
+  const { isAuthenticated, user } = useAuth()
   const [product, setProduct] = useState<Product | null>(null)
   const [activePhotoIndex, setActivePhotoIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
@@ -36,24 +37,15 @@ export default function ProductDetailPage() {
   }, [productId])
 
   const isOwnListing = user?.id === product?.sellerId
-  const canManage = isOwnListing || isAdmin
+  const canManage = isOwnListing
 
   const handleDelete = async () => {
     if (!product || !user) return
-    const confirmMessage =
-      isAdmin && !isOwnListing
-        ? "As an Admin, are you sure you want to delete this listing for moderation?"
-        : "Are you sure you want to delete your listing?"
-
-    if (!window.confirm(confirmMessage)) return
+    if (!window.confirm("Are you sure you want to delete your listing?")) return
 
     setIsDeleting(true)
     try {
-      const success =
-        isAdmin && !isOwnListing
-          ? await adminDeleteProduct(product.id)
-          : await deleteProduct(product.id, user.id)
-
+      const success = await deleteProduct(product.id, user.id)
       if (success) {
         router.push("/marketplace")
       } else {
@@ -175,11 +167,11 @@ export default function ProductDetailPage() {
         <div className="space-y-3">
           <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-white/5 bg-[#1a1a26]">
             {currentPhoto ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <ZoomableImage
                 src={currentPhoto}
                 alt={product.title}
                 className={`h-full w-full object-cover ${isSold ? "grayscale-[20%]" : ""}`}
+                containerClassName="h-full w-full"
               />
             ) : (
               <div className="flex h-full items-center justify-center text-white/30">

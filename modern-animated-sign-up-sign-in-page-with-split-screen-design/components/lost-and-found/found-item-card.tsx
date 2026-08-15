@@ -15,12 +15,12 @@ interface FoundItemCardProps {
 }
 
 export function FoundItemCard({ item, onDeleteSuccess }: FoundItemCardProps) {
-  const { user, isAdmin } = useAuth()
+  const { user } = useAuth()
   const [isDeleting, setIsDeleting] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
   const isOwner = user?.id === item.listerId
-  const canDelete = isOwner || isAdmin
+  const canDelete = isOwner
 
   const hasPhoto = item.photos.length > 0
   const isLost = item.type === "lost"

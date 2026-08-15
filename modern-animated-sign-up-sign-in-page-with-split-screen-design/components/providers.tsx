@@ -5,6 +5,7 @@ import { useEffect } from "react"
 import { AuthProvider, useAuth } from "@/lib/auth/auth-context"
 import { ChatProvider } from "@/lib/chat/chat-context"
 import { ChatWidget } from "@/components/chat/chat-widget"
+import { LightboxProvider } from "@/components/ui/lightbox-context"
 
 const PROTECTED_PREFIXES = ["/marketplace", "/lost-and-found", "/suggestions"]
 
@@ -48,7 +49,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <ChatProvider>
-        <AppShell>{children}</AppShell>
+        <LightboxProvider>
+          <AppShell>{children}</AppShell>
+        </LightboxProvider>
       </ChatProvider>
     </AuthProvider>
   )

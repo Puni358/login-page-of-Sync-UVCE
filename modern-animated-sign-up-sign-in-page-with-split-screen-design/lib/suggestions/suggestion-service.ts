@@ -42,6 +42,10 @@ export async function getQuestions(filters?: {
         full_name,
         email
       ),
+      suggestion_images (
+        id,
+        image_url
+      ),
       suggestion_answers (
         id,
         suggestion_id,
@@ -51,6 +55,10 @@ export async function getQuestions(filters?: {
         profiles:user_id (
           full_name,
           email
+        ),
+        answer_images (
+          id,
+          image_url
         )
       )
     `)
@@ -85,10 +93,16 @@ export async function getQuestions(filters?: {
     const rawProfile = row.profiles
     const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile
 
+    const rawImgs = row.suggestion_images || []
+    const qImages = (Array.isArray(rawImgs) ? rawImgs : []).map((i: any) => i.image_url)
+
     const rawAnswers = row.suggestion_answers || []
     const answers: SuggestionAnswer[] = (Array.isArray(rawAnswers) ? rawAnswers : [])
       .map((ansRow: any) => {
         const ansProfile = Array.isArray(ansRow.profiles) ? ansRow.profiles[0] : ansRow.profiles
+        const rawAnsImgs = ansRow.answer_images || []
+        const aImages = (Array.isArray(rawAnsImgs) ? rawAnsImgs : []).map((i: any) => i.image_url)
+
         return {
           id: ansRow.id,
           suggestionId: ansRow.suggestion_id,
@@ -96,6 +110,7 @@ export async function getQuestions(filters?: {
           authorName: ansProfile?.full_name?.trim() || "Student",
           answer: ansRow.answer,
           createdAt: ansRow.created_at,
+          images: aImages,
         }
       })
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
@@ -108,6 +123,7 @@ export async function getQuestions(filters?: {
       question: row.question,
       createdAt: row.created_at,
       answers,
+      images: qImages,
     }
   })
 
@@ -137,6 +153,10 @@ export async function getQuestionById(id: string): Promise<SuggestionQuestion | 
         full_name,
         email
       ),
+      suggestion_images (
+        id,
+        image_url
+      ),
       suggestion_answers (
         id,
         suggestion_id,
@@ -146,6 +166,10 @@ export async function getQuestionById(id: string): Promise<SuggestionQuestion | 
         profiles:user_id (
           full_name,
           email
+        ),
+        answer_images (
+          id,
+          image_url
         )
       )
     `)
@@ -162,6 +186,12 @@ export async function getQuestionById(id: string): Promise<SuggestionQuestion | 
         .maybeSingle()
       if (fallback.error || !fallback.data) return null
       const row = fallback.data
+
+      const { data: qImgs } = await supabase
+        .from("suggestion_images")
+        .select("image_url")
+        .eq("suggestion_id", id)
+
       const { data: answersData } = await supabase
         .from("suggestion_answers")
         .select("*")
@@ -175,6 +205,7 @@ export async function getQuestionById(id: string): Promise<SuggestionQuestion | 
         category: row.category,
         question: row.question,
         createdAt: row.created_at,
+        images: (qImgs || []).map((i: any) => i.image_url),
         answers: (answersData || []).map((ans: any) => ({
           id: ans.id,
           suggestionId: ans.suggestion_id,
@@ -182,6 +213,7 @@ export async function getQuestionById(id: string): Promise<SuggestionQuestion | 
           authorName: "Student",
           answer: ans.answer,
           createdAt: ans.created_at,
+          images: [],
         })),
       }
     }
@@ -191,10 +223,16 @@ export async function getQuestionById(id: string): Promise<SuggestionQuestion | 
   const rawProfile = (data as any).profiles
   const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile
 
+  const rawImgs = (data as any).suggestion_images || []
+  const qImages = (Array.isArray(rawImgs) ? rawImgs : []).map((i: any) => i.image_url)
+
   const rawAnswers = (data as any).suggestion_answers || []
   const answers: SuggestionAnswer[] = (Array.isArray(rawAnswers) ? rawAnswers : [])
     .map((ansRow: any) => {
       const ansProfile = Array.isArray(ansRow.profiles) ? ansRow.profiles[0] : ansRow.profiles
+      const rawAnsImgs = ansRow.answer_images || []
+      const aImages = (Array.isArray(rawAnsImgs) ? rawAnsImgs : []).map((i: any) => i.image_url)
+
       return {
         id: ansRow.id,
         suggestionId: ansRow.suggestion_id,
@@ -202,6 +240,7 @@ export async function getQuestionById(id: string): Promise<SuggestionQuestion | 
         authorName: ansProfile?.full_name?.trim() || "Student",
         answer: ansRow.answer,
         createdAt: ansRow.created_at,
+        images: aImages,
       }
     })
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
@@ -214,6 +253,7 @@ export async function getQuestionById(id: string): Promise<SuggestionQuestion | 
     question: data.question,
     createdAt: data.created_at,
     answers,
+    images: qImages,
   }
 }
 
@@ -245,6 +285,15 @@ export async function createQuestion(
     throw new Error(error?.message || "Failed to post question")
   }
 
+  if (input.images && input.images.length > 0) {
+    const imgRows = input.images.map((url) => ({
+      suggestion_id: data.id,
+      image_url: url,
+    }))
+    const { error: imgErr } = await supabase.from("suggestion_images").insert(imgRows)
+    if (imgErr) console.error("Error inserting suggestion_images:", imgErr.message)
+  }
+
   const rawProfile = (data as any).profiles
   const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile
 
@@ -256,6 +305,7 @@ export async function createQuestion(
     question: data.question,
     createdAt: data.created_at,
     answers: [],
+    images: input.images || [],
   }
 }
 
@@ -287,6 +337,15 @@ export async function addAnswer(
     throw new Error(error?.message || "Failed to post answer")
   }
 
+  if (input.images && input.images.length > 0) {
+    const imgRows = input.images.map((url) => ({
+      answer_id: data.id,
+      image_url: url,
+    }))
+    const { error: imgErr } = await supabase.from("answer_images").insert(imgRows)
+    if (imgErr) console.error("Error inserting answer_images:", imgErr.message)
+  }
+
   const rawProfile = (data as any).profiles
   const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile
 
@@ -297,20 +356,29 @@ export async function addAnswer(
     authorName: profile?.full_name?.trim() || "Student",
     answer: data.answer,
     createdAt: data.created_at,
+    images: input.images || [],
   }
 }
 
 export async function deleteQuestion(questionId: string): Promise<boolean> {
-  // First delete answers for this suggestion
-  const { error: ansErr } = await supabase
+  // 1. Fetch answers to delete answer_images
+  const { data: answers } = await supabase
     .from("suggestion_answers")
-    .delete()
+    .select("id")
     .eq("suggestion_id", questionId)
 
-  if (ansErr) {
-    console.warn("Could not delete associated suggestion_answers:", ansErr.message)
+  if (answers && answers.length > 0) {
+    const answerIds = answers.map((a) => a.id)
+    await supabase.from("answer_images").delete().in("answer_id", answerIds)
   }
 
+  // 2. Delete suggestion_answers
+  await supabase.from("suggestion_answers").delete().eq("suggestion_id", questionId)
+
+  // 3. Delete suggestion_images
+  await supabase.from("suggestion_images").delete().eq("suggestion_id", questionId)
+
+  // 4. Delete suggestion
   const { error } = await supabase.from("suggestions").delete().eq("id", questionId)
 
   if (error) {
@@ -321,6 +389,7 @@ export async function deleteQuestion(questionId: string): Promise<boolean> {
 }
 
 export async function deleteAnswer(answerId: string): Promise<boolean> {
+  await supabase.from("answer_images").delete().eq("answer_id", answerId)
   const { error } = await supabase.from("suggestion_answers").delete().eq("id", answerId)
 
   if (error) {

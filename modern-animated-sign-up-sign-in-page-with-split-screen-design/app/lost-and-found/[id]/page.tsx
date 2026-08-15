@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { ZoomableImage } from "@/components/ui/lightbox-context"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, Calendar, CheckCircle2, MapPin, Tag, Trash2, Loader2 } from "lucide-react"
@@ -15,7 +16,7 @@ import { cn } from "@/lib/utils"
 export default function LostFoundItemDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const { user, isAuthenticated, isAdmin } = useAuth()
+  const { user, isAuthenticated } = useAuth()
   const [item, setItem] = useState<LostFoundItem | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activePhoto, setActivePhoto] = useState(0)
@@ -31,7 +32,7 @@ export default function LostFoundItemDetailPage() {
   }, [itemId])
 
   const isOwner = user?.id === item?.listerId
-  const canManage = isOwner || isAdmin
+  const canManage = isOwner
 
   const handleDelete = async () => {
     if (!item) return
@@ -157,11 +158,11 @@ export default function LostFoundItemDetailPage() {
         <div className="space-y-3">
           <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-white/5 bg-[#1a1a26]">
             {item.photos.length > 0 ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <ZoomableImage
                 src={item.photos[activePhoto]}
                 alt={item.title}
                 className={cn("h-full w-full object-cover", isResolved && "grayscale-[20%]")}
+                containerClassName="h-full w-full"
               />
             ) : (
               <div className="flex h-full items-center justify-center text-white/30">No photo</div>

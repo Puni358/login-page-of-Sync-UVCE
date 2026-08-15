@@ -13,6 +13,7 @@ export type SuggestionAnswer = {
   authorName: string
   answer: string
   createdAt: string
+  images?: string[]
 }
 
 export type SuggestionQuestion = {
@@ -23,14 +24,17 @@ export type SuggestionQuestion = {
   question: string
   createdAt: string
   answers: SuggestionAnswer[]
+  images?: string[]
 }
 
 export type CreateQuestionInput = {
   category: string
   question: string
+  images?: string[]
 }
 
 export type CreateAnswerInput = {
   questionId: string
   answer: string
+  images?: string[]
 }

@@ -2,16 +2,39 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Check, CheckCircle2, Loader2, MapPin, Shield, Trash2, X, ShoppingBag, Users } from "lucide-react"
+import {
+  ArrowLeft,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Image as ImageIcon,
+  Loader2,
+  MapPin,
+  MessageSquare,
+  Shield,
+  Trash2,
+  X,
+  ShoppingBag,
+  Users,
+} from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/lib/auth/auth-context"
 import { fetchPendingProfiles, updateProfileStatus } from "@/lib/auth/admin-service"
 import { getProducts, adminDeleteProduct, updateItemStatus } from "@/lib/marketplace/product-service"
 import { getLostFoundItems, deleteLostFoundItem } from "@/lib/lost-and-found/found-item-service"
+import {
+  getQuestions,
+  deleteQuestion,
+  deleteAnswer,
+  getCategoryLabel,
+} from "@/lib/suggestions/suggestion-service"
 import type { Profile } from "@/lib/auth/types"
 import type { Product } from "@/lib/marketplace/types"
 import type { LostFoundItem } from "@/lib/lost-and-found/types"
+import type { SuggestionQuestion } from "@/lib/suggestions/types"
 import { formatDate, formatPrice } from "@/lib/marketplace/utils"
+import { ZoomableImage } from "@/components/ui/lightbox-context"
 import {
   Table,
   TableBody,
@@ -29,10 +52,13 @@ export default function AdminPage() {
   const router = useRouter()
   const { isLoading: authLoading, isAuthenticated, isAdmin } = useAuth()
 
-  const [activeTab, setActiveTab] = useState<"users" | "marketplace" | "lost-found">("users")
+  const [activeTab, setActiveTab] = useState<"users" | "marketplace" | "lost-found" | "suggestions">("users")
   const [pendingUsers, setPendingUsers] = useState<Profile[]>([])
   const [listings, setListings] = useState<Product[]>([])
   const [lostFoundListings, setLostFoundListings] = useState<LostFoundItem[]>([])
+  const [suggestionsListings, setSuggestionsListings] = useState<SuggestionQuestion[]>([])
+  const [expandedQuestionIds, setExpandedQuestionIds] = useState<Set<string>>(new Set())
+
   const [isLoadingData, setIsLoadingData] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [actingOnId, setActingOnId] = useState<string | null>(null)
@@ -42,14 +68,16 @@ export default function AdminPage() {
     setIsLoadingData(true)
     setLoadError(null)
     try {
-      const [users, products, lostFound] = await Promise.all([
+      const [users, products, lostFound, suggestions] = await Promise.all([
         fetchPendingProfiles(),
         getProducts(),
         getLostFoundItems(),
+        getQuestions(),
       ])
       setPendingUsers(users)
       setListings(products)
       setLostFoundListings(lostFound)
+      setSuggestionsListings(suggestions)
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load admin data")
     } finally {
@@ -74,6 +102,15 @@ export default function AdminPage() {
     if (authLoading || !isAdmin) return
     loadData()
   }, [authLoading, isAdmin, loadData])
+
+  const toggleExpandQuestion = (id: string) => {
+    setExpandedQuestionIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   const handleStatusUpdate = async (
     profileId: string,
@@ -173,6 +210,44 @@ export default function AdminPage() {
     }
   }
 
+  const handleDeleteAdminQuestion = async (qId: string, qText: string) => {
+    if (!window.confirm(`Are you sure you want to delete this question for moderation?\n\n"${qText.slice(0, 60)}..."`)) {
+      return
+    }
+    setActingOnId(qId)
+    setActionError(null)
+    try {
+      await deleteQuestion(qId)
+      setSuggestionsListings((current) => current.filter((q) => q.id !== qId))
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to delete question")
+    } finally {
+      setActingOnId(null)
+    }
+  }
+
+  const handleDeleteAdminAnswer = async (qId: string, ansId: string) => {
+    if (!window.confirm("Are you sure you want to delete this answer for moderation?")) {
+      return
+    }
+    setActingOnId(ansId)
+    setActionError(null)
+    try {
+      await deleteAnswer(ansId)
+      setSuggestionsListings((current) =>
+        current.map((q) =>
+          q.id === qId
+            ? { ...q, answers: q.answers.filter((a) => a.id !== ansId) }
+            : q
+        )
+      )
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to delete answer")
+    } finally {
+      setActingOnId(null)
+    }
+  }
+
   if (authLoading || !isAuthenticated || !isAdmin) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#1a1a24]">
@@ -191,7 +266,7 @@ export default function AdminPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-white">Admin Dashboard</h1>
-              <p className="text-sm text-white/50">Review registrations and moderate campus listings</p>
+              <p className="text-sm text-white/50">Review registrations and moderate campus listings &amp; Q&amp;A</p>
             </div>
           </div>
           <Link
@@ -240,6 +315,18 @@ export default function AdminPage() {
           >
             <MapPin className="h-4 w-4" />
             Lost &amp; Found ({lostFoundListings.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("suggestions")}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+              activeTab === "suggestions"
+                ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                : "text-white/50 hover:bg-white/5 hover:text-white"
+            }`}
+          >
+            <MessageSquare className="h-4 w-4" />
+            Suggestions ({suggestionsListings.length})
           </button>
         </div>
 
@@ -377,11 +464,11 @@ export default function AdminPage() {
                               <TableCell className="font-medium text-white/90">
                                 <div className="flex items-center gap-3">
                                   {item.imageUrl ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
+                                    <ZoomableImage
                                       src={item.imageUrl}
-                                      alt=""
-                                      className="h-10 w-10 rounded-lg object-cover border border-white/10"
+                                      alt={item.title}
+                                      className="h-full w-full object-cover"
+                                      containerClassName="h-10 w-10 shrink-0 rounded-lg border border-white/10"
                                     />
                                   ) : (
                                     <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-xs text-white/40">
@@ -500,11 +587,11 @@ export default function AdminPage() {
                               <TableCell className="font-medium text-white/90">
                                 <div className="flex items-center gap-3">
                                   {item.imageUrl ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
+                                    <ZoomableImage
                                       src={item.imageUrl}
-                                      alt=""
-                                      className="h-10 w-10 rounded-lg object-cover border border-white/10"
+                                      alt={item.title}
+                                      className="h-full w-full object-cover"
+                                      containerClassName="h-10 w-10 shrink-0 rounded-lg border border-white/10"
                                     />
                                   ) : (
                                     <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-xs text-white/40">
@@ -589,6 +676,152 @@ export default function AdminPage() {
                         })}
                       </TableBody>
                     </Table>
+                  )}
+                </div>
+              )}
+
+              {/* Suggestions Tab */}
+              {activeTab === "suggestions" && (
+                <div>
+                  <div className="border-b border-white/5 px-6 py-4">
+                    <h2 className="text-lg font-semibold text-white">Suggestions &amp; Q&amp;A Moderation</h2>
+                    <p className="mt-1 text-xs text-white/40">
+                      Manage campus questions and answers, review posted images, or delete inappropriate content
+                    </p>
+                  </div>
+
+                  {suggestionsListings.length === 0 ? (
+                    <div className="px-6 py-12 text-center">
+                      <p className="text-sm text-white/50">No suggestions or questions posted.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-white/5">
+                      {suggestionsListings.map((q) => {
+                        const isActingQ = actingOnId === q.id
+                        const isExpanded = expandedQuestionIds.has(q.id)
+
+                        return (
+                          <div key={q.id} className="p-6 transition-colors hover:bg-white/[0.01]">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="space-y-2 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-md bg-purple-500/20 px-2 py-0.5 text-[11px] font-bold text-purple-300 border border-purple-500/30">
+                                    {getCategoryLabel(q.category)}
+                                  </span>
+                                  {q.images && q.images.length > 0 && (
+                                    <span className="inline-flex items-center gap-1 rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-white/50">
+                                      <ImageIcon className="h-3 w-3 text-purple-400" />
+                                      {q.images.length} image{q.images.length !== 1 ? "s" : ""}
+                                    </span>
+                                  )}
+                                  <span className="text-xs text-white/40">
+                                    Posted by <strong className="text-white/70">{q.authorName}</strong> · {formatDate(q.createdAt)}
+                                  </span>
+                                </div>
+
+                                <Link
+                                  href={`/suggestions/${q.id}`}
+                                  className="text-base font-semibold text-white hover:text-purple-300 transition-colors block"
+                                >
+                                  {q.question}
+                                </Link>
+
+                                {/* Question Images Preview */}
+                                {q.images && q.images.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 pt-1">
+                                    {q.images.map((imgUrl, i) => (
+                                      <ZoomableImage
+                                        key={i}
+                                        src={imgUrl}
+                                        alt={`Question image ${i + 1}`}
+                                        className="h-full w-full object-cover"
+                                        containerClassName="aspect-square w-14 rounded-lg border border-white/10 bg-[#1a1a26]"
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 self-start pt-1 sm:pt-0">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandQuestion(q.id)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/70 hover:bg-white/10 transition-colors"
+                                >
+                                  {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                  <span>{q.answers?.length ?? 0} Answers</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isActingQ}
+                                  onClick={() => handleDeleteAdminQuestion(q.id, q.question)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
+                                >
+                                  {isActingQ ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                  Delete Question
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Expandable Answers Section */}
+                            {isExpanded && (
+                              <div className="mt-4 border-t border-white/5 pt-4 pl-4 sm:pl-6 space-y-3">
+                                <h4 className="text-xs font-semibold uppercase tracking-wider text-purple-400">
+                                  Answers ({q.answers?.length ?? 0})
+                                </h4>
+
+                                {!q.answers || q.answers.length === 0 ? (
+                                  <p className="text-xs text-white/40 italic">No answers posted for this question yet.</p>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {q.answers.map((ans) => {
+                                      const isActingAns = actingOnId === ans.id
+
+                                      return (
+                                        <div
+                                          key={ans.id}
+                                          className="flex flex-col gap-2 rounded-xl border border-white/5 bg-[#181824] p-3 sm:flex-row sm:items-start sm:justify-between"
+                                        >
+                                          <div className="space-y-1.5 flex-1">
+                                            <p className="text-xs text-white/40">
+                                              Answered by <strong className="text-white/70">{ans.authorName}</strong> · {formatDate(ans.createdAt)}
+                                            </p>
+                                            <p className="text-xs text-white/90 whitespace-pre-wrap leading-relaxed">{ans.answer}</p>
+                                            {ans.images && ans.images.length > 0 && (
+                                              <div className="flex flex-wrap gap-1.5 pt-1">
+                                                {ans.images.map((imgUrl, i) => (
+                                                  <ZoomableImage
+                                                    key={i}
+                                                    src={imgUrl}
+                                                    alt={`Answer image ${i + 1}`}
+                                                    className="h-full w-full object-cover"
+                                                    containerClassName="aspect-square w-10 rounded-md border border-white/10 bg-[#1a1a26]"
+                                                  />
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            disabled={isActingAns}
+                                            onClick={() => handleDeleteAdminAnswer(q.id, ans.id)}
+                                            className="inline-flex items-center gap-1 self-start rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
+                                          >
+                                            {isActingAns ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                                            Delete Answer
+                                          </button>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
                   )}
                 </div>
               )}

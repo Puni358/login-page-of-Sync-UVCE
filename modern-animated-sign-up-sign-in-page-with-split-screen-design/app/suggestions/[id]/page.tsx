@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
+import { ZoomableImage } from "@/components/ui/lightbox-context"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, Loader2, Trash2 } from "lucide-react"
+import { ArrowLeft, ImagePlus, Loader2, Trash2, X } from "lucide-react"
 import {
   addAnswer,
   getCategoryLabel,
@@ -15,12 +16,17 @@ import type { SuggestionQuestion } from "@/lib/suggestions/types"
 import { useAuth } from "@/lib/auth/auth-context"
 import { cn } from "@/lib/utils"
 
+const MAX_ANSWER_IMAGES = 2
+
 export default function QuestionDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const { user, isAuthenticated, isAdmin } = useAuth()
+  const { user, isAuthenticated } = useAuth()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [question, setQuestion] = useState<SuggestionQuestion | null>(null)
   const [answerText, setAnswerText] = useState("")
+  const [answerImages, setAnswerImages] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeletingQuestion, setIsDeletingQuestion] = useState(false)
@@ -43,6 +49,39 @@ export default function QuestionDetailPage() {
     loadQuestion()
   }, [loadQuestion])
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(e.target.files || [])
+    if (selectedFiles.length === 0) return
+
+    const remainingSlots = MAX_ANSWER_IMAGES - answerImages.length
+    if (remainingSlots <= 0) return
+
+    const filesToProcess = selectedFiles.slice(0, remainingSlots)
+
+    filesToProcess.forEach((file) => {
+      if (!file.type.startsWith("image/")) return
+      if (file.size > 5 * 1024 * 1024) return
+
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          const imgUrl = reader.result
+          setAnswerImages((prev) => {
+            if (prev.length >= MAX_ANSWER_IMAGES) return prev
+            return [...prev, imgUrl]
+          })
+        }
+      }
+      reader.readAsDataURL(file)
+    })
+
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  const removeAnswerImage = (indexToRemove: number) => {
+    setAnswerImages((prev) => prev.filter((_, idx) => idx !== indexToRemove))
+  }
+
   const handlePostAnswer = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!isAuthenticated) {
@@ -57,8 +96,9 @@ export default function QuestionDetailPage() {
     setIsSubmitting(true)
     setError("")
     try {
-      await addAnswer({ questionId, answer: answerText }, user.id)
+      await addAnswer({ questionId, answer: answerText, images: answerImages }, user.id)
       setAnswerText("")
+      setAnswerImages([])
       await loadQuestion()
     } catch (err: any) {
       setError(err?.message || "Failed to post answer")
@@ -69,12 +109,7 @@ export default function QuestionDetailPage() {
 
   const handleDeleteQuestion = async () => {
     if (!question || !user) return
-    const isOwner = user.id === question.userId
-    const promptMsg = isAdmin && !isOwner
-      ? "As an Admin, are you sure you want to delete this question?"
-      : "Are you sure you want to delete your question?"
-
-    if (!window.confirm(promptMsg)) return
+    if (!window.confirm("Are you sure you want to delete your question?")) return
 
     setIsDeletingQuestion(true)
     try {
@@ -86,14 +121,9 @@ export default function QuestionDetailPage() {
     }
   }
 
-  const handleDeleteAnswer = async (answerId: string, answerUserId: string) => {
+  const handleDeleteAnswer = async (answerId: string) => {
     if (!user) return
-    const isOwner = user.id === answerUserId
-    const promptMsg = isAdmin && !isOwner
-      ? "As an Admin, are you sure you want to delete this answer?"
-      : "Are you sure you want to delete your answer?"
-
-    if (!window.confirm(promptMsg)) return
+    if (!window.confirm("Are you sure you want to delete your answer?")) return
 
     setDeletingAnswerId(answerId)
     try {
@@ -126,7 +156,8 @@ export default function QuestionDetailPage() {
     )
   }
 
-  const canDeleteQuestion = user && (user.id === question.userId || isAdmin)
+  // Restrict elevated admin actions on public page — only true owner can delete here
+  const canDeleteQuestion = user && user.id === question.userId
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -153,7 +184,23 @@ export default function QuestionDetailPage() {
           {getCategoryLabel(question.category)}
         </span>
         <h1 className="text-xl font-bold text-white sm:text-2xl leading-relaxed">{question.question}</h1>
-        <p className="text-xs text-white/35">
+        
+        {/* Question Images */}
+        {question.images && question.images.length > 0 && (
+          <div className="flex flex-wrap gap-3 pt-2">
+            {question.images.map((imgUrl, i) => (
+              <ZoomableImage
+                key={i}
+                src={imgUrl}
+                alt={`Question image ${i + 1}`}
+                className="h-full w-full object-cover"
+                containerClassName="aspect-video w-48 rounded-xl border border-white/10 bg-[#1a1a26]"
+              />
+            ))}
+          </div>
+        )}
+
+        <p className="text-xs text-white/35 pt-2">
           Asked by <span className="text-white/60 font-medium">{question.authorName}</span> ·{" "}
           {new Date(question.createdAt).toLocaleString("en-IN", {
             dateStyle: "medium",
@@ -174,17 +221,34 @@ export default function QuestionDetailPage() {
         ) : (
           <div className="space-y-3">
             {question.answers.map((ans) => {
-              const canDeleteAns = user && (user.id === ans.userId || isAdmin)
+              // Restrict elevated admin actions on public page — only true owner can delete here
+              const canDeleteAns = user && user.id === ans.userId
               const isDeletingThisAns = deletingAnswerId === ans.id
 
               return (
                 <div key={ans.id} className="group relative rounded-xl border border-white/5 bg-[#12121a] p-4 sm:p-5">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm leading-relaxed text-white/90 whitespace-pre-wrap">{ans.answer}</p>
+                    <div className="space-y-3">
+                      <p className="text-sm leading-relaxed text-white/90 whitespace-pre-wrap">{ans.answer}</p>
+                      {/* Answer Images */}
+                      {ans.images && ans.images.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {ans.images.map((imgUrl, i) => (
+                            <ZoomableImage
+                              key={i}
+                              src={imgUrl}
+                              alt={`Answer image ${i + 1}`}
+                              className="h-full w-full object-cover"
+                              containerClassName="aspect-video w-36 rounded-lg border border-white/10 bg-[#1a1a26]"
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     {canDeleteAns && (
                       <button
                         type="button"
-                        onClick={() => handleDeleteAnswer(ans.id, ans.userId)}
+                        onClick={() => handleDeleteAnswer(ans.id)}
                         disabled={isDeletingThisAns}
                         className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-white/40 hover:text-red-400 disabled:opacity-50"
                         title="Delete Answer"
@@ -230,6 +294,49 @@ export default function QuestionDetailPage() {
                 "w-full resize-none rounded-xl border border-white/5 bg-[#1a1a26] px-4 py-3 text-sm text-white placeholder-white/30 focus:border-purple-500/70 focus:outline-none focus:ring-2 focus:ring-purple-500/25"
               )}
             />
+
+            {/* Answer Images Upload (up to 2) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-white/70">Attach Images (up to 2)</span>
+                <span className="text-xs text-white/40">{answerImages.length} of {MAX_ANSWER_IMAGES}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {answerImages.map((imgUrl, idx) => (
+                  <div key={idx} className="relative aspect-square w-20 overflow-hidden rounded-lg border border-white/10">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imgUrl} alt={`Answer upload ${idx + 1}`} className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeAnswerImage(idx)}
+                      className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white hover:bg-red-500"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+
+                {answerImages.length < MAX_ANSWER_IMAGES && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex aspect-square w-20 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-white/15 bg-[#1a1a26] text-white/40 hover:border-purple-500/50 hover:text-purple-400 transition-all"
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                    <span className="text-[10px]">Add photo</span>
+                  </button>
+                )}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleImageSelect}
+              />
+            </div>
+
             {error && <p className="text-xs text-red-400">{error}</p>}
             <button
               type="submit"
