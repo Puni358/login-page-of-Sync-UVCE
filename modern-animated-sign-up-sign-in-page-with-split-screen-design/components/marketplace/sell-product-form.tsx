@@ -24,6 +24,11 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+function getWordCount(text: string): number {
+  const trimmed = text.trim()
+  return trimmed ? trimmed.split(/\s+/).length : 0
+}
+
 function isValidPhone(phone: string): boolean {
   const digitsOnly = phone.replace(/\D/g, "")
   return digitsOnly.length === 10
@@ -105,7 +110,9 @@ export function SellProductForm() {
   const validate = (): FormErrors => {
     const next: FormErrors = {}
     if (!title.trim()) next.title = "Item title is required"
-    if (!description.trim()) next.description = "Description is required"
+    if (getWordCount(description) > 250) {
+      next.description = "Description cannot exceed 250 words"
+    }
     if (!category || !ALLOWED_CATEGORIES.includes(category)) {
       next.category = "Select a valid category"
     }

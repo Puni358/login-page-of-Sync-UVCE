@@ -22,6 +22,11 @@ function isValidPhone(phone: string): boolean {
   return digitsOnly.length === 10
 }
 
+function getWordCount(text: string): number {
+  const trimmed = text.trim()
+  return trimmed ? trimmed.split(/\s+/).length : 0
+}
+
 export function SellForm() {
   const router = useRouter()
   const { user } = useAuth()
@@ -49,7 +54,9 @@ export function SellForm() {
     const next: FormErrors = {}
     if (!title.trim()) next.title = "Title is required"
     if (!category) next.category = "Category is required"
-    if (!description.trim()) next.description = "Description is required"
+    if (getWordCount(description) > 250) {
+      next.description = "Description cannot exceed 250 words"
+    }
     if (!price.trim()) next.price = "Price is required"
     else if (Number.isNaN(Number(price)) || Number(price) <= 0)
       next.price = "Enter a valid price greater than 0"
@@ -264,9 +271,19 @@ export function SellForm() {
 
       {/* Description */}
       <div className="space-y-1.5">
-        <label htmlFor="description" className="text-sm font-medium text-white/80">
-          Description
-        </label>
+        <div className="flex items-center justify-between">
+          <label htmlFor="description" className="text-sm font-medium text-white/80">
+            Description <span className="text-xs font-normal text-white/40">(Optional)</span>
+          </label>
+          <span
+            className={cn(
+              "text-xs transition-colors",
+              getWordCount(description) > 250 ? "font-semibold text-red-400" : "text-white/40"
+            )}
+          >
+            {getWordCount(description)}/250 words
+          </span>
+        </div>
         <textarea
           id="description"
           value={description}

@@ -26,7 +26,7 @@ export interface Product {
 
 export interface CreateProductInput {
   title: string
-  description: string
+  description?: string
   price: number
   location: string
   imageUrl?: string | null
@@ -48,7 +48,7 @@ export interface ItemRow {
   type: string
   category?: string | null
   title: string
-  description: string
+  description?: string | null
   price: number
   image_url: string | null
   location: string | null
