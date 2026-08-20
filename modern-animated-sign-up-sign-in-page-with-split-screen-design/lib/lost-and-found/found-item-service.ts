@@ -7,6 +7,27 @@ import type {
   LostFoundType,
 } from "./types"
 
+const ITEM_SELECT_PUBLIC = `
+  id,
+  user_id,
+  type,
+  category,
+  title,
+  description,
+  price,
+  image_url,
+  location,
+  status,
+  created_at,
+  item_images (
+    id,
+    image_url
+  ),
+  public_profiles:user_id (
+    full_name
+  )
+`
+
 const ITEM_SELECT = `
   id,
   user_id,
@@ -31,7 +52,7 @@ const ITEM_SELECT = `
 `
 
 function mapItemToLostFound(row: ItemRow): LostFoundItem {
-  const rawProfile = row.profiles
+  const rawProfile = row.profiles ?? (row as any).public_profiles
   const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile
   const mainImageUrl = row.image_url
 
@@ -90,7 +111,7 @@ function applyClientFilters(items: LostFoundItem[], filters?: LostFoundFilters):
 export async function getLostFoundItems(filters?: LostFoundFilters): Promise<LostFoundItem[]> {
   let query = supabase
     .from("items")
-    .select(ITEM_SELECT)
+    .select(ITEM_SELECT_PUBLIC)
     .in("type", ["lost", "found"])
     .order("created_at", { ascending: false })
 

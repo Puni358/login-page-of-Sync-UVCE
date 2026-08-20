@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import Link from "next/link"
 import { Plus, Search, ShoppingBag } from "lucide-react"
 import { ProductCard } from "@/components/marketplace/product-card"
@@ -23,12 +23,25 @@ export default function MarketplacePage() {
   const [search, setSearch] = useState("")
   const [isLoading, setIsLoading] = useState(true)
 
+  const isInitialMount = useRef(true)
+  const productListRef = useRef<HTMLElement>(null)
+
   useEffect(() => {
     setIsLoading(true)
     getProducts({ category, search })
       .then(setProducts)
       .finally(() => setIsLoading(false))
   }, [category, search])
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    if (category !== "all") {
+      productListRef.current?.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [category])
 
   return (
     <div className="space-y-8">
@@ -92,7 +105,7 @@ export default function MarketplacePage() {
       </section>
 
       {/* Search & Filter */}
-      <section className="space-y-4">
+      <section ref={productListRef} className="space-y-4">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
           <input

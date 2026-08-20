@@ -137,16 +137,15 @@ export function SellProductForm() {
         {
           title: title.trim(),
           description: description.trim(),
+          price: 0,
+          location: "Campus",
           category: category as ProductCategory,
           condition: condition as ProductCondition,
           photos,
           sellerEmail: email.trim(),
           sellerPhone: phone.trim(),
         },
-        {
-          id: user.id,
-          name: `${user.firstName} ${user.lastName}`.trim(),
-        }
+        user.id
       )
       router.push(`/marketplace/${product.id}`)
     } catch {
@@ -267,7 +266,7 @@ export function SellProductForm() {
                   : "border-white/5 bg-[#1a1a26] hover:border-purple-500/25"
               )}
             >
-              <div className="mt-0.5 text-purple-400">{getCategoryIcon(cat.id, "w-5 h-5")}</div>
+              <div className="mt-0.5 text-purple-400">{getCategoryIcon(cat.id)}</div>
               <div>
                 <p className="text-sm font-medium text-white">{cat.label}</p>
                 <p className="text-xs text-white/40">{cat.description}</p>

@@ -6,8 +6,24 @@ export function getCategoryLabel(category: ProductCategory): string {
     "lab-tools": "Lab Tools",
     calculators: "Calculators",
     "small-electronics": "Small Electronics",
+    general: "General",
   }
-  return labels[category]
+  return labels[category] || "General"
+}
+
+export function getCategoryIcon(category?: string): string {
+  switch (category) {
+    case "books":
+      return "BookOpen"
+    case "lab-tools":
+      return "Wrench"
+    case "calculators":
+      return "Calculator"
+    case "small-electronics":
+      return "Laptop"
+    default:
+      return "Package"
+  }
 }
 
 export function formatCondition(condition: string): string {

@@ -76,7 +76,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const authUser = await resolveAuthUser(session.user)
           if (!authUser) {
-            console.log("[AuthCheck - onAuthStateChange] Profile check ran for user:", session.user.id, "Found profile: false -> Signing out.")
+            console.log("[AuthCheck - onAuthStateChange] Profile check ran for user:", session.user.id, "Found profile: false -> Cleaning up orphan & signing out.")
+            try {
+              await fetch("/api/auth/cleanup-orphan", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ userId: session.user.id }),
+              })
+            } catch (err) {
+              console.error("[AuthCheck - onAuthStateChange] Orphan cleanup failed:", err)
+            }
             await supabase.auth.signOut()
             setUser(null)
           } else {

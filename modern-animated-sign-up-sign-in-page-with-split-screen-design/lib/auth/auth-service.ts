@@ -12,6 +12,19 @@ export function isSigningUp(): boolean {
   return isSigningUpInProcess
 }
 
+async function cleanupOrphanAuthUser(userId: string): Promise<void> {
+  try {
+    console.log("[AuthCheck] Deleting orphaned auth user via API route:", userId)
+    await fetch("/api/auth/cleanup-orphan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    })
+  } catch (err) {
+    console.error("[AuthCheck] Failed to request orphan user cleanup:", err)
+  }
+}
+
 export async function getSessionAuthUser(): Promise<AuthUser | null> {
   if (isSigningUpInProcess) {
     console.log("[AuthCheck - getSession] Skipping profile check because sign up is in progress.")
@@ -25,7 +38,8 @@ export async function getSessionAuthUser(): Promise<AuthUser | null> {
   if (!session?.user) return null
   const authUser = await resolveAuthUser(session.user)
   if (!authUser) {
-    console.log("[AuthCheck - getSession] Profile doesn't exist for session user:", session.user.id, "Signing out.")
+    console.log("[AuthCheck - getSession] Profile doesn't exist for session user:", session.user.id, "Cleaning up orphan user & signing out.")
+    await cleanupOrphanAuthUser(session.user.id)
     await supabase.auth.signOut()
     return null
   }
@@ -55,7 +69,8 @@ export async function performLogin(
   console.log("[AuthCheck - Sign In] Profile check ran for user:", data.user.id, "Profile exists:", !!profile)
 
   if (!profile) {
-    console.log("[AuthCheck - Sign In] Profile doesn't exist for user:", data.user.id, "Signing out and blocking access.")
+    console.log("[AuthCheck - Sign In] Profile doesn't exist for user:", data.user.id, "Cleaning up orphan user & signing out.")
+    await cleanupOrphanAuthUser(data.user.id)
     await supabase.auth.signOut()
     return {
       success: false,
@@ -80,6 +95,51 @@ export async function performLogin(
   return { success: true, user }
 }
 
+/**
+ * Inserts a profile row for a newly created auth user and returns the AuthUser.
+ * Extracted as a shared helper used by both the normal signup flow and the retry path.
+ */
+async function finishSignUpProfile(
+  userId: string,
+  info: { trimmedEmail: string; trimmedUsn: string; trimmedPhone: string; fullName: string }
+): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+  const { trimmedEmail, trimmedUsn, trimmedPhone, fullName } = info
+
+  console.log("[SignUp] Right before inserting profile row for user:", userId, "email:", trimmedEmail)
+
+  const { error: profileError } = await supabase.from("profiles").insert({
+    id: userId,
+    email: trimmedEmail,
+    usn: trimmedUsn,
+    phone_number: trimmedPhone,
+    full_name: fullName,
+    status: "pending",
+  })
+
+  if (profileError) {
+    console.error("[SignUp] Profile insert failed for user:", userId, "error:", profileError.message)
+    return { success: false, error: profileError.message }
+  }
+
+  console.log("[SignUp] Profile row successfully inserted for user:", userId)
+
+  // Build a minimal Supabase User-like object so mapToAuthUser works without a live session re-fetch
+  const fakeSupabaseUser = { id: userId, email: trimmedEmail, user_metadata: { full_name: fullName } } as any
+
+  const createdProfile = {
+    id: userId,
+    email: trimmedEmail,
+    usn: trimmedUsn,
+    phone_number: trimmedPhone,
+    full_name: fullName,
+    status: "pending" as const,
+    is_admin: false,
+  }
+
+  const user = mapToAuthUser(fakeSupabaseUser, createdProfile)
+  return { success: true, user }
+}
+
 export async function performSignUp(
   input: SignUpInput
 ): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
@@ -90,45 +150,91 @@ export async function performSignUp(
     const trimmedPhone = input.phone.trim()
     const trimmedEmail = input.email.trim()
     const fullName = `${input.firstName.trim()} ${input.lastName.trim()}`.trim()
+    const profileInfo = { trimmedEmail, trimmedUsn, trimmedPhone, fullName }
 
+    // Step 1: Attempt to clean up any orphaned auth user with this email first.
+    // This works when SUPABASE_SERVICE_ROLE_KEY is configured in the server environment.
+    try {
+      await fetch("/api/auth/cleanup-orphan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail }),
+      })
+    } catch (e) {
+      console.warn("[SignUp] Error during prior orphan cleanup by email:", e)
+    }
+
+    // Step 2: Attempt fresh signup
     const { data, error } = await supabase.auth.signUp({
       email: trimmedEmail,
       password: input.password,
     })
 
+    // Step 3: Handle "User already registered" — this happens when a prior Google login
+    // created an orphaned auth user that the cleanup above couldn't remove (e.g. service key missing).
+    if (
+      error?.message?.toLowerCase().includes("user already registered") ||
+      error?.message?.toLowerCase().includes("already registered")
+    ) {
+      console.log("[SignUp] Got 'User already registered' for:", trimmedEmail, "— checking if orphaned auth user")
+
+      // Try signing in with the user-supplied password to check if this is a password-based orphan
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password: input.password,
+      })
+
+      if (!signInError && signInData?.user) {
+        // Signed in successfully — check whether a profiles row already exists
+        const existingProfile = await fetchProfile(signInData.user.id, signInData.user.email)
+
+        if (existingProfile) {
+          // A real, complete account exists — sign back out and tell the user
+          await supabase.auth.signOut()
+          return {
+            success: false,
+            error: "An account with this email already exists. Please log in instead.",
+          }
+        }
+
+        // No profile row → it is a genuine orphan with a matching password. Clean it up now.
+        console.log("[SignUp] Orphaned auth user confirmed (password match) for:", trimmedEmail, "userId:", signInData.user.id)
+        try {
+          await fetch("/api/auth/cleanup-orphan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: signInData.user.id }),
+          })
+        } catch (e) {
+          console.warn("[SignUp] Orphan cleanup failed:", e)
+        }
+        await supabase.auth.signOut()
+
+        // Retry signup
+        const { data: retryData, error: retryError } = await supabase.auth.signUp({
+          email: trimmedEmail,
+          password: input.password,
+        })
+        if (retryError) return { success: false, error: retryError.message }
+        if (!retryData.user) return { success: false, error: "Sign up failed after cleanup. Please try again." }
+
+        return await finishSignUpProfile(retryData.user.id, profileInfo)
+      } else {
+        // Sign-in with the provided password failed → the orphan was created via Google OAuth
+        // (no password) and cannot be removed without the service role key.
+        // Give the user a clear, actionable message.
+        console.warn("[SignUp] Orphan from Google OAuth detected for:", trimmedEmail, "— service role key required to remove it.")
+        return {
+          success: false,
+          error: "This email was previously used with Google. Please use 'Continue with Google' to sign in instead.",
+        }
+      }
+    }
+
     if (error) return { success: false, error: error.message }
     if (!data.user) return { success: false, error: "Sign up failed" }
 
-    console.log("[SignUp] Right before inserting profile row for user:", data.user.id, "email:", trimmedEmail)
-
-    const { error: profileError } = await supabase.from("profiles").insert({
-      id: data.user.id,
-      email: trimmedEmail,
-      usn: trimmedUsn,
-      phone_number: trimmedPhone,
-      full_name: fullName,
-      status: "pending",
-    })
-
-    if (profileError) {
-      console.error("[SignUp] Profile insert failed for user:", data.user.id, "error:", profileError.message)
-      return { success: false, error: profileError.message }
-    }
-
-    console.log("[SignUp] Profile row successfully inserted for user:", data.user.id)
-
-    const createdProfile = {
-      id: data.user.id,
-      email: trimmedEmail,
-      usn: trimmedUsn,
-      phone_number: trimmedPhone,
-      full_name: fullName,
-      status: "pending" as const,
-      is_admin: false,
-    }
-
-    const user = mapToAuthUser(data.user, createdProfile)
-    return { success: true, user }
+    return await finishSignUpProfile(data.user.id, profileInfo)
   } finally {
     isSigningUpInProcess = false
   }
@@ -189,7 +295,8 @@ export async function handleAuthCallback(): Promise<{
   console.log("[AuthCheck - OAuth Callback] Profile check ran for user:", session.user.id, "Profile exists:", !!profile)
 
   if (!profile) {
-    console.log("[AuthCheck - OAuth Callback] Profile doesn't exist for user:", session.user.id, "Signing out and blocking access.")
+    console.log("[AuthCheck - OAuth Callback] Profile doesn't exist for user:", session.user.id, "Cleaning up orphan user & signing out.")
+    await cleanupOrphanAuthUser(session.user.id)
     await supabase.auth.signOut()
     return {
       user: null,

@@ -13,11 +13,12 @@ import { useAuth } from "@/lib/auth/auth-context"
 import { supabase } from "@/lib/supabaseClient"
 import type { ChatConversation, OpenChatParams } from "./types"
 import {
+  createConversationInSupabase,
   deleteConversationFromSupabase,
   deleteMessageFromSupabase,
   fetchTotalUnreadCountFromSupabase,
   fetchUserConversations,
-  getOrCreateConversationInSupabase,
+  getOrPrepareConversationInSupabase,
   markSupabaseConversationRead,
   sendMessageToSupabase,
 } from "./chat-service"
@@ -52,6 +53,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [view, setView] = useState<ChatView>("closed")
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [draftConversation, setDraftConversation] = useState<ChatConversation | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
@@ -117,14 +119,18 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const activeConversation = useMemo(() => {
     if (!activeId) return null
+    if (draftConversation && draftConversation.id === activeId) {
+      return draftConversation
+    }
     return conversations.find((c) => c.id === activeId) || null
-  }, [activeId, conversations])
+  }, [activeId, conversations, draftConversation])
 
   const openInbox = useCallback(() => {
     refresh()
     setIsOpen(true)
     setView("list")
     setActiveId(null)
+    setDraftConversation(null)
   }, [refresh])
 
   const openChat = useCallback(
@@ -135,16 +141,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
       setIsLoading(true)
       try {
-        const conv = await getOrCreateConversationInSupabase(currentUserId, params)
+        const conv = await getOrPrepareConversationInSupabase(currentUserId, params)
 
         if (conv && conv.id) {
-          await markSupabaseConversationRead(conv.id, currentUserId)
+          if (conv.id.startsWith("draft_")) {
+            setDraftConversation(conv)
+          } else {
+            setDraftConversation(null)
+            await markSupabaseConversationRead(conv.id, currentUserId)
+          }
           setActiveId(conv.id)
           await refresh()
           setIsOpen(true)
           setView("thread")
         } else {
-          console.error("[ChatContext] Failed to get or create conversation in Supabase.")
+          console.error("[ChatContext] Failed to get or prepare conversation in Supabase.")
         }
       } catch (err) {
         console.error("Error opening chat:", err)
@@ -159,17 +170,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setIsOpen(false)
     setView("closed")
     setActiveId(null)
+    setDraftConversation(null)
   }, [])
 
   const backToList = useCallback(() => {
     refresh()
     setView("list")
     setActiveId(null)
+    setDraftConversation(null)
   }, [refresh])
 
   const selectConversation = useCallback(
     async (id: string) => {
       if (!currentUserId) return
+      setDraftConversation(null)
       await markSupabaseConversationRead(id, currentUserId)
       setActiveId(id)
       setView("thread")
@@ -182,12 +196,29 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     async (body: string) => {
       if (!activeId || !currentUserId || !body.trim()) return
 
-      const newMsg = await sendMessageToSupabase(activeId, currentUserId, body)
+      let targetConvId = activeId
+
+      if (activeId.startsWith("draft_") && draftConversation) {
+        const realConvId = await createConversationInSupabase(
+          currentUserId,
+          draftConversation.itemId,
+          draftConversation.otherPartyUserId
+        )
+        if (!realConvId) {
+          console.error("[ChatContext] Failed to create conversation in Supabase")
+          return
+        }
+        targetConvId = realConvId
+      }
+
+      const newMsg = await sendMessageToSupabase(targetConvId, currentUserId, body)
       if (newMsg) {
+        setDraftConversation(null)
+        setActiveId(targetConvId)
         await refresh()
       }
     },
-    [activeId, currentUserId, refresh]
+    [activeId, currentUserId, draftConversation, refresh]
   )
 
   const deleteMessage = useCallback(
@@ -205,6 +236,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const deleteConversation = useCallback(
     async (conversationId: string) => {
       if (!currentUserId || !conversationId) return false
+      if (conversationId.startsWith("draft_")) {
+        setDraftConversation(null)
+        if (activeId === conversationId) {
+          setActiveId(null)
+          setView("list")
+        }
+        return true
+      }
       const success = await deleteConversationFromSupabase(conversationId, currentUserId)
       if (success) {
         if (activeId === conversationId) {

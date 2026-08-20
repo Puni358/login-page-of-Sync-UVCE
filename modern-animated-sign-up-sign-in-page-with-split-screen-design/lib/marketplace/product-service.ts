@@ -1,6 +1,27 @@
 import { supabase } from "@/lib/supabaseClient"
 import type { CreateProductInput, ItemRow, Product, ProductFilters } from "./types"
 
+const ITEM_SELECT_PUBLIC = `
+  id,
+  user_id,
+  type,
+  category,
+  title,
+  description,
+  price,
+  image_url,
+  location,
+  status,
+  created_at,
+  item_images (
+    id,
+    image_url
+  ),
+  public_profiles:user_id (
+    full_name
+  )
+`
+
 const ITEM_SELECT = `
   id,
   user_id,
@@ -25,7 +46,7 @@ const ITEM_SELECT = `
 `
 
 function mapItemToProduct(row: ItemRow): Product {
-  const rawProfile = row.profiles
+  const rawProfile = row.profiles ?? (row as any).public_profiles
   const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile
   const mainImageUrl = row.image_url
 
@@ -94,7 +115,7 @@ function applyClientFilters(products: Product[], filters?: ProductFilters): Prod
 export async function getProducts(filters?: ProductFilters): Promise<Product[]> {
   let query = supabase
     .from("items")
-    .select(ITEM_SELECT)
+    .select(ITEM_SELECT_PUBLIC)
     .eq("type", "market")
     .order("created_at", { ascending: false })
 

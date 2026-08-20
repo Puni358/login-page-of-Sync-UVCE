@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import Link from "next/link"
 import { Plus, Search, MapPin, Tag } from "lucide-react"
 import { FoundItemCard } from "@/components/lost-and-found/found-item-card"
@@ -21,6 +21,9 @@ export default function LostAndFoundPage() {
   const [search, setSearch] = useState("")
   const [isLoading, setIsLoading] = useState(true)
 
+  const isInitialMount = useRef(true)
+  const itemsSectionRef = useRef<HTMLElement>(null)
+
   const fetchItems = () => {
     setIsLoading(true)
     getLostFoundItems({ type: typeFilter, category: categoryFilter, search })
@@ -31,6 +34,16 @@ export default function LostAndFoundPage() {
   useEffect(() => {
     fetchItems()
   }, [typeFilter, categoryFilter, search])
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    if (categoryFilter !== "all") {
+      itemsSectionRef.current?.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [categoryFilter])
 
   const handleDeleteSuccess = (deletedId: string) => {
     setItems((prev) => prev.filter((item) => item.id !== deletedId))
@@ -63,7 +76,7 @@ export default function LostAndFoundPage() {
       </section>
 
       {/* Type & Category Filter Controls */}
-      <section className="space-y-4">
+      <section ref={itemsSectionRef} className="space-y-4">
         {/* Type Filter Tabs */}
         <div className="flex flex-wrap items-center gap-2">
           <button

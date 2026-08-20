@@ -7,7 +7,10 @@ import { ChatProvider } from "@/lib/chat/chat-context"
 import { ChatWidget } from "@/components/chat/chat-widget"
 import { LightboxProvider } from "@/components/ui/lightbox-context"
 
-const PROTECTED_PREFIXES = ["/marketplace", "/lost-and-found", "/suggestions"]
+// Routes that pending-approval users should be bounced away from.
+// These are NOT auth-gated for browsing — unauthenticated users can view all content.
+// Login is only required when a user tries to perform an action (sell, message, report, ask).
+const PENDING_RESTRICTED_PREFIXES = ["/marketplace", "/lost-and-found", "/suggestions"]
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -20,22 +23,27 @@ function AppShell({ children }: { children: React.ReactNode }) {
     !pathname.startsWith("/pending-approval") &&
     !pathname.startsWith("/auth/callback")
 
-  const isProtectedRoute = PROTECTED_PREFIXES.some(
+  const isPendingRestrictedRoute = PENDING_RESTRICTED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   )
 
   useEffect(() => {
     if (isLoading) return
 
-    if (isPending && isProtectedRoute) {
+    // Redirect pending-approval users away from content routes
+    if (isPending && isPendingRestrictedRoute) {
       router.replace("/pending-approval")
       return
     }
 
+    // Redirect approved users away from the pending page
     if (isApproved && pathname === "/pending-approval") {
       router.replace("/marketplace")
     }
-  }, [isLoading, isPending, isApproved, isProtectedRoute, pathname, router])
+
+    // Unauthenticated users are intentionally NOT redirected —
+    // marketplace, lost-and-found, and suggestions are public browsing routes.
+  }, [isLoading, isPending, isApproved, isPendingRestrictedRoute, pathname, router])
 
   return (
     <>

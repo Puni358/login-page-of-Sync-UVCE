@@ -34,12 +34,15 @@ export async function fetchUserConversations(currentUserId: string): Promise<Cha
 
   if (!convRows || convRows.length === 0) return []
 
-  // Filter out conversations that current user soft deleted
+  // Filter out conversations that current user soft-deleted, UNLESS there are new
+  // unread messages from the other party (in which case we restore visibility).
+  // The actual per-user reset of deleted_by_X happens in sendMessageToSupabase for the sender.
+  // Here we peek at whether any messages arrive after the soft-delete to decide visibility.
   const activeConvRows = convRows.filter((conv: any) => {
     const isBuyer = conv.buyer_id === currentUserId
-    if (isBuyer && conv.deleted_by_buyer === true) return false
-    if (!isBuyer && conv.deleted_by_seller === true) return false
-    return true
+    const isDeleted = isBuyer ? conv.deleted_by_buyer === true : conv.deleted_by_seller === true
+    // Keep non-deleted conversations always
+    return !isDeleted
   })
 
   const result: ChatConversation[] = await Promise.all(
@@ -101,17 +104,58 @@ export async function fetchUserConversations(currentUserId: string): Promise<Cha
     })
   )
 
-  return result.sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  )
+  return result
+    .filter((conv) => conv.messages.length > 0)
+    .sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    )
 }
 
-export async function getOrCreateConversationInSupabase(
+export async function createConversationInSupabase(
+  currentUserId: string,
+  itemId: string,
+  otherPartyUserId: string
+): Promise<string | null> {
+  if (!currentUserId || !itemId || !otherPartyUserId) return null
+
+  // Double check if conversation already exists before inserting
+  const { data: existingConvs } = await supabase
+    .from("conversations")
+    .select("id, buyer_id, seller_id")
+    .eq("item_id", itemId)
+
+  const convRow = (existingConvs || []).find(
+    (c: any) =>
+      (c.buyer_id === currentUserId && c.seller_id === otherPartyUserId) ||
+      (c.buyer_id === otherPartyUserId && c.seller_id === currentUserId)
+  )
+
+  if (convRow?.id) return convRow.id
+
+  const { data: newConv, error } = await supabase
+    .from("conversations")
+    .insert({
+      item_id: itemId,
+      buyer_id: currentUserId,
+      seller_id: otherPartyUserId,
+    })
+    .select("id")
+    .single()
+
+  if (error) {
+    console.error("Error creating conversation in Supabase:", error)
+    return null
+  }
+
+  return newConv.id
+}
+
+export async function getOrPrepareConversationInSupabase(
   currentUserId: string,
   params: OpenChatParams
 ): Promise<ChatConversation | null> {
   if (!currentUserId) {
-    console.error("[ChatService] getOrCreateConversationInSupabase missing currentUserId")
+    console.error("[ChatService] getOrPrepareConversationInSupabase missing currentUserId")
     return null
   }
 
@@ -148,66 +192,31 @@ export async function getOrCreateConversationInSupabase(
       (c.buyer_id === params.otherPartyUserId && c.seller_id === currentUserId)
   )
 
-  // If conversation was previously soft deleted for current user, reset soft delete flag upon opening
-  if (convRow) {
-    const isBuyer = convRow.buyer_id === currentUserId
-    const isDeletedForUser = isBuyer ? convRow.deleted_by_buyer : convRow.deleted_by_seller
-    if (isDeletedForUser) {
-      const updatePayload = isBuyer ? { deleted_by_buyer: false } : { deleted_by_seller: false }
-      await supabase.from("conversations").update(updatePayload).eq("id", convRow.id)
-    }
-  }
-
-  // 2. If not existing, create new conversation row in Supabase
+  // If no conversation row exists yet, DO NOT insert into DB upon open!
+  // Return a draft conversation structure.
   if (!convRow) {
-    console.log("[ChatService] Creating new conversation in Supabase...", {
-      item_id: params.itemId,
-      buyer_id: currentUserId,
-      seller_id: params.otherPartyUserId,
-    })
-
-    const { data: newConv, error: createErr } = await supabase
-      .from("conversations")
-      .insert({
-        item_id: params.itemId,
-        buyer_id: currentUserId,
-        seller_id: params.otherPartyUserId,
-      })
-      .select(`
-        id,
-        item_id,
-        buyer_id,
-        seller_id,
-        created_at,
-        items ( id, title, type ),
-        buyer:profiles!buyer_id ( id, full_name ),
-        seller:profiles!seller_id ( id, full_name )
-      `)
-      .single()
-
-    if (createErr) {
-      console.error(
-        "Error creating conversation in Supabase:",
-        createErr.message,
-        createErr.details,
-        createErr.hint,
-        createErr.code
-      )
-      return null
+    console.log("[ChatService] No existing conversation found. Returning draft conversation object without DB insert.")
+    return {
+      id: `draft_${params.itemId}_${params.otherPartyUserId}`,
+      itemId: params.itemId,
+      itemType: params.itemType,
+      itemTitle: params.itemTitle,
+      otherPartyUserId: params.otherPartyUserId,
+      otherPartyName: params.otherPartyName || "Campus User",
+      messages: [],
+      unreadCount: 0,
+      updatedAt: new Date().toISOString(),
     }
-
-    convRow = newConv
-    console.log("[ChatService] Successfully created conversation in Supabase with ID:", convRow?.id)
-  } else {
-    console.log("[ChatService] Found existing conversation in Supabase with ID:", convRow?.id)
   }
 
-  if (!convRow?.id) {
-    console.error("[ChatService] Conversation row object missing valid ID!", convRow)
-    return null
-  }
+  // NOTE: Do NOT reset soft-delete flags here (on open).
+  // The flag is only reset when the user actually sends a new message — see sendMessageToSupabase.
+  // This ensures that a user who deleted a conversation does not see it re-appear
+  // just because the other party opens the chat panel.
 
-  // 3. Fetch messages for conversation
+  const isBuyer = convRow.buyer_id === currentUserId
+
+  // Fetch messages for existing conversation
   const { data: msgRows, error: msgErr } = await supabase
     .from("messages")
     .select("id, conversation_id, sender_id, content, read, deleted_by_sender, deleted_by_recipient, created_at")
@@ -224,7 +233,6 @@ export async function getOrCreateConversationInSupabase(
     )
   }
 
-  const isBuyer = convRow.buyer_id === currentUserId
   const otherPartyProfile = isBuyer ? convRow.seller : convRow.buyer
   const otherPartyId = isBuyer ? convRow.seller_id : convRow.buyer_id
 
@@ -248,18 +256,23 @@ export async function getOrCreateConversationInSupabase(
 
   const unreadCount = messages.filter((m) => !m.isOwn && !m.read).length
 
+  const itemsObj = Array.isArray(convRow.items) ? convRow.items[0] : convRow.items
+  const partyObj = Array.isArray(otherPartyProfile) ? otherPartyProfile[0] : otherPartyProfile
+
   return {
     id: convRow.id,
     itemId: convRow.item_id,
-    itemType: (convRow.items?.type as ChatItemType) || params.itemType,
-    itemTitle: convRow.items?.title || params.itemTitle,
+    itemType: (itemsObj?.type as ChatItemType) || params.itemType,
+    itemTitle: itemsObj?.title || params.itemTitle,
     otherPartyUserId: otherPartyId,
-    otherPartyName: otherPartyProfile?.full_name || params.otherPartyName || "Campus User",
+    otherPartyName: partyObj?.full_name || params.otherPartyName || "Campus User",
     messages,
     unreadCount,
     updatedAt: messages.length > 0 ? messages[messages.length - 1].createdAt : convRow.created_at,
   }
 }
+
+export const getOrCreateConversationInSupabase = getOrPrepareConversationInSupabase
 
 export async function sendMessageToSupabase(
   conversationId: string,
@@ -275,11 +288,24 @@ export async function sendMessageToSupabase(
     return null
   }
 
-  // If conversation was soft-deleted by seller or buyer, reset deletion flags on new message
-  await supabase
+  // If the conversation was soft-deleted by the sender, restore it for them so the
+  // conversation reappears in their inbox. Do NOT reset the other party's flag —
+  // they may have intentionally deleted it, and the new message will make it visible
+  // to them via the unread-count logic.
+  const { data: convMeta } = await supabase
     .from("conversations")
-    .update({ deleted_by_buyer: false, deleted_by_seller: false })
+    .select("buyer_id, deleted_by_buyer, deleted_by_seller")
     .eq("id", conversationId)
+    .single()
+
+  if (convMeta) {
+    const senderIsBuyer = convMeta.buyer_id === currentUserId
+    const senderDeletedFlag = senderIsBuyer ? convMeta.deleted_by_buyer : convMeta.deleted_by_seller
+    if (senderDeletedFlag) {
+      const resetPayload = senderIsBuyer ? { deleted_by_buyer: false } : { deleted_by_seller: false }
+      await supabase.from("conversations").update(resetPayload).eq("id", conversationId)
+    }
+  }
 
   const { data: newMsg, error } = await supabase
     .from("messages")
