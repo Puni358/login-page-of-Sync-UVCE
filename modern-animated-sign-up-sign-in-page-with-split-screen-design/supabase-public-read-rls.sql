@@ -36,5 +36,17 @@ CREATE POLICY "Public can read suggestion_answers"
   ON suggestion_answers FOR SELECT
   USING (true);
 
+-- 6. Allow anyone to read suggestion images
+DROP POLICY IF EXISTS "Public can read suggestion_images" ON suggestion_images;
+CREATE POLICY "Public can read suggestion_images"
+  ON suggestion_images FOR SELECT
+  USING (true);
+
+-- 7. Allow anyone to read answer images
+DROP POLICY IF EXISTS "Public can read answer_images" ON answer_images;
+CREATE POLICY "Public can read answer_images"
+  ON answer_images FOR SELECT
+  USING (true);
+
 -- NOTE: Write operations (INSERT, UPDATE, DELETE) still require authentication —
 -- these policies only open up SELECT for anonymous visitors.

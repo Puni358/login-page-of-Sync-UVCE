@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Plus, Search, MessageCircleQuestion } from "lucide-react"
+import { Plus, Search, MessageCircleQuestion, Lock } from "lucide-react"
 import { QuestionCard } from "@/components/suggestions/question-card"
 import { EmptyState } from "@/components/ui/empty-state"
 import { PageLoader } from "@/components/ui/page-loader"
@@ -43,9 +43,10 @@ export default function SuggestionsPage() {
         ) : (
           <Link
             href="/?redirect=/suggestions/ask&mode=login"
-            className="mt-5 inline-block text-sm font-medium text-purple-400 hover:text-purple-300"
+            className="mt-5 inline-flex items-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 px-5 py-2.5 text-sm font-medium text-purple-300 transition-all hover:bg-purple-500/20"
           >
-            Login to ask a question
+            <Lock className="h-4 w-4 text-purple-400" />
+            Login to Ask a Question
           </Link>
         )}
       </section>

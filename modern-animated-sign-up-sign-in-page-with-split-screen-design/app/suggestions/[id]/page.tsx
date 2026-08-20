@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react"
 import { ZoomableImage } from "@/components/ui/lightbox-context"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, ImagePlus, Loader2, Trash2, X } from "lucide-react"
+import { ArrowLeft, ImagePlus, Loader2, Lock, Trash2, X } from "lucide-react"
 import {
   addAnswer,
   getCategoryLabel,
@@ -274,15 +274,25 @@ export default function QuestionDetailPage() {
       <section className="rounded-2xl border border-white/5 bg-[#12121a] p-6">
         <h3 className="mb-4 text-base font-semibold text-white">Your Answer</h3>
         {!isAuthenticated ? (
-          <p className="text-sm text-white/50">
-            <Link
-              href={`/?redirect=${encodeURIComponent(`/suggestions/${questionId}`)}&mode=login`}
-              className="text-purple-400 hover:text-purple-300 font-medium"
-            >
-              Login
-            </Link>{" "}
-            to post an answer.
-          </p>
+          <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-500/20 text-purple-400">
+                <Lock className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-base font-semibold text-white">Login to Answer &amp; Participate</h4>
+                <p className="mt-1 text-sm text-white/50">
+                  Suggestions and campus Q&amp;A are open for everyone to view. Sign in to post an answer to this question.
+                </p>
+                <Link
+                  href={`/?redirect=${encodeURIComponent(`/suggestions/${questionId}`)}&mode=login`}
+                  className="mt-4 inline-flex items-center justify-center rounded-xl bg-purple-500 px-5 py-2 text-sm font-medium text-white shadow-lg shadow-purple-500/25 transition-all hover:bg-purple-400 hover:shadow-purple-500/40"
+                >
+                  Login to Answer
+                </Link>
+              </div>
+            </div>
+          </div>
         ) : (
           <form onSubmit={handlePostAnswer} className="space-y-4">
             <textarea

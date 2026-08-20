@@ -38,9 +38,8 @@ export async function getQuestions(filters?: {
       category,
       question,
       created_at,
-      profiles:user_id (
-        full_name,
-        email
+      public_profiles:user_id (
+        full_name
       ),
       suggestion_images (
         id,
@@ -52,9 +51,8 @@ export async function getQuestions(filters?: {
         user_id,
         answer,
         created_at,
-        profiles:user_id (
-          full_name,
-          email
+        public_profiles:user_id (
+          full_name
         ),
         answer_images (
           id,
@@ -90,7 +88,7 @@ export async function getQuestions(filters?: {
   }
 
   const result: SuggestionQuestion[] = (data || []).map((row: any) => {
-    const rawProfile = row.profiles
+    const rawProfile = row.profiles ?? row.public_profiles
     const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile
 
     const rawImgs = row.suggestion_images || []
@@ -99,7 +97,8 @@ export async function getQuestions(filters?: {
     const rawAnswers = row.suggestion_answers || []
     const answers: SuggestionAnswer[] = (Array.isArray(rawAnswers) ? rawAnswers : [])
       .map((ansRow: any) => {
-        const ansProfile = Array.isArray(ansRow.profiles) ? ansRow.profiles[0] : ansRow.profiles
+        const rawAnsProfile = ansRow.profiles ?? ansRow.public_profiles
+        const ansProfile = Array.isArray(rawAnsProfile) ? rawAnsProfile[0] : rawAnsProfile
         const rawAnsImgs = ansRow.answer_images || []
         const aImages = (Array.isArray(rawAnsImgs) ? rawAnsImgs : []).map((i: any) => i.image_url)
 
@@ -150,8 +149,10 @@ export async function getQuestionById(id: string): Promise<SuggestionQuestion | 
       question,
       created_at,
       profiles:user_id (
-        full_name,
-        email
+        full_name
+      ),
+      public_profiles:user_id (
+        full_name
       ),
       suggestion_images (
         id,
@@ -164,8 +165,10 @@ export async function getQuestionById(id: string): Promise<SuggestionQuestion | 
         answer,
         created_at,
         profiles:user_id (
-          full_name,
-          email
+          full_name
+        ),
+        public_profiles:user_id (
+          full_name
         ),
         answer_images (
           id,
@@ -220,7 +223,7 @@ export async function getQuestionById(id: string): Promise<SuggestionQuestion | 
     return null
   }
 
-  const rawProfile = (data as any).profiles
+  const rawProfile = (data as any).profiles ?? (data as any).public_profiles
   const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile
 
   const rawImgs = (data as any).suggestion_images || []
@@ -229,7 +232,8 @@ export async function getQuestionById(id: string): Promise<SuggestionQuestion | 
   const rawAnswers = (data as any).suggestion_answers || []
   const answers: SuggestionAnswer[] = (Array.isArray(rawAnswers) ? rawAnswers : [])
     .map((ansRow: any) => {
-      const ansProfile = Array.isArray(ansRow.profiles) ? ansRow.profiles[0] : ansRow.profiles
+      const rawAnsProfile = ansRow.profiles ?? ansRow.public_profiles
+      const ansProfile = Array.isArray(rawAnsProfile) ? rawAnsProfile[0] : rawAnsProfile
       const rawAnsImgs = ansRow.answer_images || []
       const aImages = (Array.isArray(rawAnsImgs) ? rawAnsImgs : []).map((i: any) => i.image_url)
 
